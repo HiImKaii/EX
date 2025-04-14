@@ -1,0 +1,1895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cây kiến thức cá nhân</title>
+  <!-- Thêm thư viện TinyMCE cho rich text editing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.6.2/tinymce.min.js"></script>
+  <!-- Thêm thư viện Sortable.js cho drag & drop -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <style>
+    :root {
+      --bg-color: #f0f2f5;
+      --text-color: #333;
+      --card-bg: #ffffff;
+      --dialog-bg: #ffffff;
+      --dialog-text: #333;
+      --button-bg: #007acc;
+      --button-text: white;
+      --button-hover: #005f99;
+      --header-color: #333;
+      --border-color: #ddd;
+      --shadow-color: rgba(0,0,0,0.1);
+    }
+
+    .dark-theme {
+      --bg-color: #1a1a1a;
+      --text-color: #e0e0e0;
+      --card-bg: #2d2d2d;
+      --dialog-bg: #2d2d2d;
+      --dialog-text: #e0e0e0;
+      --button-bg: #2c5d8a;
+      --button-text: #e0e0e0;
+      --button-hover: #3a7ab5;
+      --header-color: #e0e0e0;
+      --border-color: #444;
+      --shadow-color: rgba(0,0,0,0.4);
+    }
+
+    body {
+      font-family: sans-serif;
+      background: var(--bg-color);
+      padding: 20px;
+      text-align: center;
+      color: var(--text-color);
+      transition: all 0.3s ease;
+    }
+
+    h1, h2, h3 {
+      color: var(--header-color);
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 2cm;
+      margin-top: 20px;
+    }
+
+    .node {
+      border-radius: 12px;
+      width: 10cm;
+      height: 10cm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 10px;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+      flex-shrink: 0;
+      color: white;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .node.dragging {
+      opacity: 0.5;
+      transform: scale(0.95);
+    }
+
+    .node-controls {
+      position: absolute;
+      bottom: 5px;
+      right: 5px;
+      display: flex;
+      gap: 5px;
+    }
+
+    .node-controls button {
+      font-size: 12px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      background-color: #dc3545;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    .node-controls button.edit {
+      background-color: #ffc107;
+      color: black;
+    }
+
+    .drag-handle {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      cursor: grab;
+      padding: 5px;
+      font-size: 18px;
+      border-radius: 4px;
+      background-color: rgba(255,255,255,0.2);
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .controls {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      margin: 5px;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 6px;
+      background-color: var(--button-bg);
+      color: var(--button-text);
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    button:hover {
+      background-color: var(--button-hover);
+    }
+
+    .add-node-button {
+      background: var(--card-bg);
+      color: var(--text-color);
+      font-size: 24px;
+      font-weight: bold;
+      border: 2px dashed var(--border-color);
+      box-shadow: none;
+    }
+
+    .add-node-button:hover {
+      background: rgba(104, 213, 155, 0.1);
+    }
+
+    .dialog {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--dialog-bg);
+      color: var(--dialog-text);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 0 25px var(--shadow-color);
+      z-index: 1000;
+      width: 600px;
+      max-width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .dialog label, .dialog select, .dialog input {
+      display: block;
+      width: 100%;
+      margin-bottom: 15px;
+      font-size: 16px;
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+      padding: 8px;
+      border-radius: 4px;
+    }
+
+    .dialog-actions {
+      text-align: right;
+      margin-top: 20px;
+    }
+
+    .theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 100;
+      background-color: var(--button-bg);
+      color: var(--button-text);
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--shadow-color);
+    }
+
+    /* Hiệu ứng drag & drop */
+    .drop-zone {
+      border: 2px dashed #4caf50;
+      background-color: rgba(76, 175, 80, 0.1);
+    }
+
+    .note-content {
+      width: 100%;
+      height: 300px;
+      margin-top: 10px;
+    }
+
+    /* TinyMCE customization */
+    .tox-tinymce {
+      border-radius: 8px;
+    }
+
+    #note-preview-dialog {
+      width: 80%;
+      max-width: 800px;
+      height: 80vh;
+    }
+
+    .note-preview-content {
+      text-align: left;
+      padding: 20px;
+      height: calc(100% - 80px);
+      overflow-y: auto;
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      border-radius: 8px;
+    }
+
+    /* Mobile responsiveness */
+    @media (max-width: 768px) {
+      .node {
+        width: 80%;
+        height: 200px;
+      }
+
+      .container {
+        gap: 1cm;
+      }
+
+      .dialog {
+        width: 95%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="theme-toggle" id="themeToggle">🌓</div>
+  <h1>Cây kiến thức cá nhân</h1>
+
+  <div id="mainView">
+    <div class="container" id="mainContainer"></div>
+  </div>
+
+  <div id="subView" class="hidden">
+    <div class="controls">
+      <button onclick="goHome()">🏠 Trang chủ</button>
+      <button onclick="goBack()">← Quay lại</button>
+    </div>
+    <h2 id="subTitle"></h2>
+    <div id="subContent" class="container"></div>
+  </div>
+
+  <div id="dialog" class="dialog hidden">
+    <h3 id="dialogTitle">Tạo mục mới</h3>
+    <input type="text" id="newNodeName" placeholder="Tên mục">
+    <select id="newNodeType">
+      <option value="sub">📁 Mục con</option>
+      <option value="text">📝 Ghi chú</option>
+      <option value="link">🔗 Liên kết</option>
+    </select>
+    <div id="contentInputContainer">
+      <input type="text" id="newNodeLink" placeholder="URL liên kết" class="hidden">
+      <div id="richTextEditor" class="hidden">
+        <textarea id="newNodeContent" class="note-content"></textarea>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button id="createNodeBtn">Tạo</button>
+      <button onclick="hideDialog()">Hủy</button>
+    </div>
+  </div>
+
+  <div id="note-preview-dialog" class="dialog hidden">
+    <h3 id="noteTitle"></h3>
+    <div class="note-preview-content" id="noteContent"></div>
+    <div class="dialog-actions">
+      <button onclick="editCurrentNote()">Sửa</button>
+      <button onclick="hideNotePreview()">Đóng</button>
+    </div>
+  </div>
+
+  <script>
+    let data = {};
+    let currentTitle = '';
+    let historyStack = [];
+    let currentTheme = 'light';
+    let currentNoteBeingEdited = '';
+    let editor = null;
+    // Thêm các biến theo dõi đồng bộ hóa
+    let lastSyncTime = 0; // Thời gian đồng bộ cuối cùng
+    let lastSyncSource = ''; // Nguồn đồng bộ cuối cùng ('local' hoặc 'onedrive')
+    let dataVersion = 1; // Phiên bản dữ liệu
+
+    // Khởi tạo TinyMCE
+function initTinyMCE(selector, content = '') {
+  if (editor) {
+    editor.remove();
+  }
+
+  return tinymce.init({
+    selector: selector,
+    height: 300,
+    menubar: false,
+    plugins: [
+      'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview', 'anchor',
+      'searchreplace', 'visualblocks', 'code', 'fullscreen',
+      'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount'
+    ],
+    toolbar: 'undo redo | formatselect | ' +
+      'bold italic backcolor | alignleft aligncenter ' +
+      'alignright alignjustify | bullist numlist outdent indent | ' +
+      'removeformat | image | help',
+    content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
+    setup: function(ed) {
+      editor = ed;
+      ed.on('init', function() {
+        ed.setContent(content).then(() => {
+          setupAutoSave();
+        });
+      });
+    },
+    skin: currentTheme === 'dark' ? 'oxide-dark' : 'oxide',
+    content_css: currentTheme === 'dark' ? 'dark' : 'default',
+    // Cấu hình chèn ảnh
+    image_title: true,
+    file_picker_types: 'image',
+    // Sử dụng Base64 để lưu trữ ảnh trực tiếp trong nội dung
+    images_upload_handler: function (blobInfo, progress) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function () {
+          resolve(reader.result);
+        };
+        reader.onerror = function () {
+          reject('Không thể đọc file');
+        };
+        reader.readAsDataURL(blobInfo.blob());
+      });
+    },
+    // Giới hạn kích thước tối đa (2MB)
+    max_file_size: 2097152
+  });
+}
+
+function checkStorageSize() {
+  try {
+    const dataSize = JSON.stringify(data).length;
+    const storageSizeMB = (dataSize / (1024 * 1024)).toFixed(2);
+    
+    // Nếu kích thước dữ liệu vượt quá 5MB, cảnh báo người dùng
+    if (dataSize > 5 * 1024 * 1024) {
+      alert(`Cảnh báo: Dữ liệu của bạn hiện đã đạt ${storageSizeMB}MB. Nhiều hình ảnh có thể làm chậm ứng dụng. Hãy cân nhắc tối ưu hoặc xóa bớt hình ảnh không cần thiết.`);
+    }
+    
+    return storageSizeMB;
+  } catch (error) {
+    console.error('Lỗi khi kiểm tra kích thước dữ liệu:', error);
+    return '0.00';
+  }
+}
+    // Lưu dữ liệu
+function saveData() {
+  try {
+    // Cập nhật thông tin phiên bản và thời gian
+    const metaData = {
+      data: data,
+      version: dataVersion++,
+      lastModified: Date.now(),
+      source: 'local'
+    };
+    
+    localStorage.setItem('knowledgeTree', JSON.stringify(metaData));
+    lastSyncSource = 'local';
+    lastSyncTime = metaData.lastModified;
+    
+    checkStorageSize(); // Kiểm tra kích thước sau khi lưu
+  } catch (error) {
+    console.error('Lỗi khi lưu dữ liệu:', error);
+    if (error.name === 'QuotaExceededError') {
+      alert('Không thể lưu dữ liệu do đã vượt quá giới hạn dung lượng lưu trữ. Vui lòng xóa bớt hình ảnh hoặc xuất dữ liệu để sao lưu.');
+    } else {
+      alert('Không thể lưu dữ liệu. Vui lòng thử lại.');
+    }
+  }
+  
+  // Cập nhật trạng thái đồng bộ trong giao diện
+  updateSyncStatus();
+}
+
+    // Tải dữ liệu
+function loadData() {
+  try {
+    const saved = localStorage.getItem('knowledgeTree');
+    if (saved) {
+      let parsedData;
+      try {
+        parsedData = JSON.parse(saved);
+        
+        // Kiểm tra xem đây là định dạng cũ hay mới
+        if (parsedData.data && parsedData.version !== undefined && parsedData.lastModified) {
+          // Định dạng mới có metadata
+          data = parsedData.data;
+          dataVersion = parsedData.version;
+          lastSyncTime = parsedData.lastModified;
+          lastSyncSource = parsedData.source || 'local';
+        } else {
+          // Định dạng cũ - chuyển đổi sang định dạng mới
+          data = parsedData;
+          dataVersion = 1;
+          lastSyncTime = Date.now();
+          lastSyncSource = 'local';
+          
+          // Lưu lại với định dạng mới
+          saveData();
+        }
+      } catch (error) {
+        console.error('Lỗi khi phân tích dữ liệu:', error);
+        resetToDefaultData();
+      }
+    } else {
+      // Dữ liệu mẫu
+      data = {
+        'Học tập': { type: 'sub', children: ['Toán', 'Lập trình'] },
+        'Toán': { type: 'sub', children: ['Giải tích', 'Đại số'] },
+        'Lập trình': { type: 'sub', children: [] },
+        'Giải tích': { type: 'text', content: '<p>Nội dung về giải tích...</p>' },
+        'Đại số': { type: 'text', content: '<p>Nội dung về đại số...</p>' },
+        'Game': { type: 'sub', children: ['Game yêu thích', 'Link Steam'] },
+        'Game yêu thích': { type: 'text', content: '<p>Skyrim, Witcher 3...</p>' },
+        'Link Steam': { type: 'link', content: 'https://store.steampowered.com/' },
+        'Văn hóa': { type: 'sub', children: ['Âm nhạc', 'Lễ hội'] },
+        'Âm nhạc': { type: 'text', content: '<p>Các bài hát yêu thích...</p>' },
+        'Lễ hội': { type: 'text', content: '<p>Các lễ hội văn hóa...</p>' },
+        'Phim ảnh': { type: 'sub', children: ['Phim yêu thích'] },
+        'Phim yêu thích': { type: 'text', content: '<p>Inception, Interstellar...</p>' },
+        'Chính trị': { type: 'sub', children: ['Tin tức', 'Lịch sử'] },
+        'Tin tức': { type: 'link', content: 'https://news.example.com' },
+        'Lịch sử': { type: 'text', content: '<p>Các sự kiện lịch sử quan trọng...</p>' }
+      };
+      
+      // Lưu dữ liệu mẫu với định dạng mới
+      saveData();
+    }
+    
+    // Kiểm tra và sửa chữa dữ liệu bị hỏng
+    for (let key in data) {
+      if (data[key].type === 'sub' && !Array.isArray(data[key].children)) {
+        data[key].children = [];
+      }
+    }
+    
+    // Cập nhật trạng thái đồng bộ trong giao diện
+    updateSyncStatus();
+  } catch (error) {
+    console.error('Lỗi khi tải dữ liệu:', error);
+    resetToDefaultData();
+  }
+}
+    // Đặt lại dữ liệu mặc định
+    function resetToDefaultData() {
+      data = {
+        'Học tập': { type: 'sub', children: [] },
+        'Sở thích': { type: 'sub', children: [] }
+      };
+      saveData();
+    }
+
+    // Hiển thị hộp thoại tạo/chỉnh sửa
+    function showDialog(isEdit = false, nodeName = '') {
+      document.getElementById('dialog').classList.remove('hidden');
+      const dialogTitle = document.getElementById('dialogTitle');
+      const createBtn = document.getElementById('createNodeBtn');
+      
+      if (isEdit && nodeName) {
+        dialogTitle.innerText = 'Chỉnh sửa mục';
+        createBtn.innerText = 'Cập nhật';
+        document.getElementById('newNodeName').value = nodeName;
+        
+        if (data[nodeName]) {
+          const nodeType = data[nodeName].type;
+          document.getElementById('newNodeType').value = nodeType;
+          updateDialogFields(nodeType);
+          
+          if (nodeType === 'link') {
+            document.getElementById('newNodeLink').value = data[nodeName].content || '';
+          } else if (nodeType === 'text') {
+            currentNoteBeingEdited = nodeName;
+            initTinyMCE('#newNodeContent', data[nodeName].content || '');
+          }
+        }
+        
+        createBtn.onclick = function() {
+          updateNode(nodeName);
+        };
+      } else {
+        dialogTitle.innerText = 'Tạo mục mới';
+        createBtn.innerText = 'Tạo';
+        document.getElementById('newNodeName').value = '';
+        document.getElementById('newNodeType').value = 'sub';
+        document.getElementById('newNodeLink').value = '';
+        currentNoteBeingEdited = '';
+        
+        updateDialogFields('sub');
+        initTinyMCE('#newNodeContent', '');
+        
+        createBtn.onclick = createNode;
+      }
+      
+      document.getElementById('newNodeName').focus();
+    }
+
+    // Cập nhật trường trong hộp thoại dựa trên loại nút
+    function updateDialogFields(type) {
+      const linkInput = document.getElementById('newNodeLink');
+      const richTextEditor = document.getElementById('richTextEditor');
+      
+      if (type === 'link') {
+        linkInput.classList.remove('hidden');
+        richTextEditor.classList.add('hidden');
+      } else if (type === 'text') {
+        linkInput.classList.add('hidden');
+        richTextEditor.classList.remove('hidden');
+      } else {
+        linkInput.classList.add('hidden');
+        richTextEditor.classList.add('hidden');
+      }
+    }
+
+    // Ẩn hộp thoại
+    function hideDialog() {
+      document.getElementById('dialog').classList.add('hidden');
+      if (editor) {
+        editor.remove();
+        editor = null;
+      }
+    }
+
+    // Hiển thị xem trước ghi chú
+    function showNotePreview(name) {
+      if (!data[name] || data[name].type !== 'text') return;
+      
+      document.getElementById('noteTitle').innerText = name;
+      document.getElementById('noteContent').innerHTML = data[name].content || '<p>Không có nội dung</p>';
+      document.getElementById('note-preview-dialog').classList.remove('hidden');
+      currentNoteBeingEdited = name;
+    }
+
+    // Ẩn xem trước ghi chú
+    function hideNotePreview() {
+      document.getElementById('note-preview-dialog').classList.add('hidden');
+    }
+
+    // Chỉnh sửa ghi chú hiện tại
+    function editCurrentNote() {
+      hideNotePreview();
+      if (currentNoteBeingEdited) {
+        showDialog(true, currentNoteBeingEdited);
+      }
+    }
+
+    // Tạo nút mới
+    function createNode() {
+      const name = document.getElementById('newNodeName').value.trim();
+      const type = document.getElementById('newNodeType').value;
+      let content = '';
+      
+      if (!name) {
+        alert('Vui lòng nhập tên cho mục mới!');
+        return;
+      }
+      
+      if (data[name]) {
+        alert('Tên này đã tồn tại! Vui lòng chọn tên khác.');
+        return;
+      }
+      
+      if (type === 'link') {
+        content = document.getElementById('newNodeLink').value.trim();
+        if (!content) {
+          alert('Vui lòng nhập URL cho liên kết!');
+          return;
+        }
+      } else if (type === 'text') {
+        if (editor) {
+          content = editor.getContent();
+        }
+        if (!content) {
+          alert('Vui lòng nhập nội dung cho ghi chú!');
+          return;
+        }
+      }
+
+      data[name] = { type };
+      if (type === 'sub') {
+        data[name].children = [];
+      } else {
+        data[name].content = content;
+      }
+
+      if (currentTitle && data[currentTitle] && data[currentTitle].type === 'sub') {
+        if (!Array.isArray(data[currentTitle].children)) {
+          data[currentTitle].children = [];
+        }
+        data[currentTitle].children.push(name);
+      }
+
+      saveData();
+      hideDialog();
+      renderCurrentView();
+    }
+
+    // Cập nhật nút
+    function updateNode(oldName) {
+      const newName = document.getElementById('newNodeName').value.trim();
+      const type = document.getElementById('newNodeType').value;
+      let content = '';
+      
+      if (!newName) {
+        alert('Tên mục không được để trống!');
+        return;
+      }
+      
+      if (newName !== oldName && data[newName]) {
+        alert('Tên này đã tồn tại! Vui lòng chọn tên khác.');
+        return;
+      }
+      
+      if (type === 'link') {
+        content = document.getElementById('newNodeLink').value.trim();
+        if (!content) {
+          alert('Vui lòng nhập URL cho liên kết!');
+          return;
+        }
+      } else if (type === 'text') {
+        if (editor) {
+          content = editor.getContent();
+        }
+        if (!content) {
+          alert('Vui lòng nhập nội dung cho ghi chú!');
+          return;
+        }
+      }
+      
+      // Nếu thay đổi loại nút
+      if (data[oldName].type !== type) {
+        if (type === 'sub') {
+          data[oldName] = { type, children: [] };
+        } else {
+          data[oldName] = { type, content };
+        }
+      } else {
+        // Nếu chỉ thay đổi nội dung
+        if (type !== 'sub') {
+          data[oldName].content = content;
+        }
+      }
+      
+      // Nếu đổi tên
+      if (newName !== oldName) {
+        data[newName] = JSON.parse(JSON.stringify(data[oldName]));
+        delete data[oldName];
+        
+        // Cập nhật tham chiếu trong các nút cha
+        for (let key in data) {
+          if (data[key].type === 'sub' && Array.isArray(data[key].children)) {
+            const idx = data[key].children.indexOf(oldName);
+            if (idx !== -1) {
+              data[key].children[idx] = newName;
+            }
+          }
+        }
+      }
+      
+      saveData();
+      hideDialog();
+      renderCurrentView();
+    }
+
+    // Tạo phần tử nút
+    function createNodeElement(name, parent = '') {
+      if (!data[name]) {
+        console.error('Node không tồn tại:', name);
+        return document.createElement('div'); // Trả về phần tử trống để tránh lỗi
+      }
+      
+      const item = data[name];
+      const div = document.createElement('div');
+      const colors = ['#ff6b6b', '#6bc5ff', '#ffe66d', '#6bff95', '#a66bff', '#ff9a6b'];
+      const colorIndex = Math.abs(name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % colors.length;
+      const color = colors[colorIndex];
+
+      div.className = 'node';
+      div.setAttribute('data-name', name);
+      div.style.background = color;
+      div.style.boxShadow = `0 0 20px ${color}80`;
+
+      let icon = '📁';
+      if (item.type === 'text') icon = '📝';
+      if (item.type === 'link') icon = '🔗';
+
+      // Thêm handle kéo thả
+      const dragHandle = document.createElement('div');
+      dragHandle.className = 'drag-handle';
+      dragHandle.innerHTML = '⋮⋮';
+      dragHandle.setAttribute('title', 'Kéo để di chuyển');
+      div.appendChild(dragHandle);
+
+      const content = document.createElement('div');
+      content.innerHTML = `${icon}<br>${name}`;
+      content.style.pointerEvents = 'none'; // Để tránh ảnh hưởng đến kéo thả
+      div.appendChild(content);
+
+      div.onclick = (e) => {
+        if (e.target.closest('.node-controls') || e.target.closest('.drag-handle')) return;
+        
+        if (item.type === 'sub') {
+          historyStack.push(currentTitle);
+          openSubPage(name);
+        } else if (item.type === 'link') {
+          try {
+            window.open(item.content, '_blank');
+          } catch (error) {
+            console.error('Lỗi khi mở liên kết:', error);
+            alert('Không thể mở liên kết: ' + item.content);
+          }
+        } else if (item.type === 'text') {
+          showNotePreview(name);
+        }
+      };
+
+      const controls = document.createElement('div');
+      controls.className = 'node-controls';
+
+      const editBtn = document.createElement('button');
+      editBtn.innerText = 'Sửa';
+      editBtn.className = 'edit';
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
+        showDialog(true, name);
+      };
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.innerText = 'Xoá';
+      deleteBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (!confirm(`Xoá mục "${name}"?`)) return;
+        
+        // Xóa tất cả các nút con nếu là nút cha
+        if (item.type === 'sub' && Array.isArray(item.children)) {
+          // Tạo một bản sao để tránh vấn đề khi xóa trong vòng lặp
+          const childrenCopy = [...item.children];
+          for (let child of childrenCopy) {
+            deleteNodeRecursively(child);
+          }
+        }
+        
+        delete data[name];
+        
+        // Xóa tham chiếu từ các nút cha
+        for (let key in data) {
+          if (data[key].type === 'sub' && Array.isArray(data[key].children)) {
+            data[key].children = data[key].children.filter(n => n !== name);
+          }
+        }
+        
+        saveData();
+        renderCurrentView();
+      };
+
+      controls.appendChild(editBtn);
+      controls.appendChild(deleteBtn);
+      div.appendChild(controls);
+      return div;
+    }
+
+    // Xóa nút đệ quy
+    function deleteNodeRecursively(nodeName) {
+      if (!data[nodeName]) return;
+      
+      if (data[nodeName].type === 'sub' && Array.isArray(data[nodeName].children)) {
+        const childrenCopy = [...data[nodeName].children];
+        for (let child of childrenCopy) {
+          deleteNodeRecursively(child);
+        }
+      }
+      
+      delete data[nodeName];
+    }
+
+    // Tạo nút thêm mới
+    function createAddButton() {
+      const addDiv = document.createElement('div');
+      addDiv.className = 'node add-node-button';
+      addDiv.innerHTML = '<div>＋<br>Thêm mục mới</div>';
+      addDiv.onclick = () => showDialog(false);
+      return addDiv;
+    }
+
+    // Render trang chính
+    function renderMain() {
+      const container = document.getElementById('mainContainer');
+      container.innerHTML = '';
+      
+      // Tìm tất cả các nút gốc (không có nút cha)
+      const rootNodes = [];
+      for (let key in data) {
+        let hasParent = false;
+        for (let parentKey in data) {
+          if (data[parentKey].type === 'sub' && Array.isArray(data[parentKey].children) && 
+              data[parentKey].children.includes(key)) {
+            hasParent = true;
+            break;
+          }
+        }
+        if (!hasParent && data[key].type === 'sub') {
+          rootNodes.push(key);
+        }
+      }
+      
+      // Nếu không có nút gốc nào, tạo một nút mặc định
+      if (rootNodes.length === 0) {
+        data['Mục gốc'] = { type: 'sub', children: [] };
+        rootNodes.push('Mục gốc');
+        saveData();
+      }
+      
+      // Hiển thị các nút gốc
+      rootNodes.forEach(key => {
+        container.appendChild(createNodeElement(key));
+      });
+      
+      container.appendChild(createAddButton());
+      
+      // Khởi tạo kéo thả
+      initSortable(container);
+    }
+
+    // Render trang con
+    function renderSub(title) {
+      if (!data[title] || data[title].type !== 'sub') {
+        console.error('Không thể hiển thị mục không tồn tại hoặc không phải mục con:', title);
+        goHome();
+        return;
+      }
+      
+      const content = document.getElementById('subContent');
+      content.innerHTML = '';
+      
+      if (!Array.isArray(data[title].children)) {
+        data[title].children = [];
+        saveData();
+      }
+      
+      const children = data[title].children;
+      
+      if (children.length === 0) {
+        const emptyMessage = document.createElement('p');
+        emptyMessage.innerText = 'Chưa có mục nào. Hãy thêm mục mới!';
+        content.appendChild(emptyMessage);
+      } else {
+        // Kiểm tra và lọc các nút con không tồn tại
+        const validChildren = children.filter(child => data[child]);
+        if (validChildren.length !== children.length) {
+          data[title].children = validChildren;
+          saveData();
+        }
+        
+        validChildren.forEach(child => {
+          content.appendChild(createNodeElement(child, title));
+        });
+      }
+      
+      content.appendChild(createAddButton());
+      
+      // Khởi tạo kéo thả
+      initSortable(content);
+    }
+
+    // Khởi tạo Sortable.js cho kéo thả
+    function initSortable(container) {
+      if (!container) return;
+      
+      new Sortable(container, {
+        animation: 150,
+        handle: '.drag-handle',
+        draggable: '.node:not(.add-node-button)',
+        ghostClass: 'drop-zone',
+        dragClass: 'dragging',
+        onEnd: function(evt) {
+          const nodeName = evt.item.getAttribute('data-name');
+          
+          if (!nodeName || !data[nodeName]) return;
+          
+          // Nếu kéo thả trong cùng một container
+          if (currentTitle) {
+            // Cập nhật thứ tự trong mục cha
+            const children = Array.from(container.querySelectorAll('.node:not(.add-node-button)'))
+              .map(node => node.getAttribute('data-name'))
+              .filter(name => name && data[name]);
+            
+            data[currentTitle].children = children;
+          } else {
+            // Trường hợp kéo thả trong trang chính
+            // Cập nhật danh sách các nút gốc nếu cần
+          }
+          
+          saveData();
+        }
+      });
+    }
+
+    // Render view hiện tại
+    function renderCurrentView() {
+      if (!currentTitle) {
+        renderMain();
+      } else {
+        if (!data[currentTitle]) {
+          console.error('Mục không tồn tại:', currentTitle);
+          goHome();
+          return;
+        }
+        document.getElementById('subTitle').innerText = currentTitle;
+        renderSub(currentTitle);
+      }
+    }
+
+    // Mở trang con
+    function openSubPage(title) {
+      if (!data[title]) {
+        console.error('Không thể mở mục không tồn tại:', title);
+        return;
+      }
+      
+      currentTitle = title;
+      document.getElementById('mainView').classList.add('hidden');
+      document.getElementById('subView').classList.remove('hidden');
+      renderSub(title);
+      document.getElementById('subTitle').innerText = title;
+    }
+
+    // Quay lại
+    function goBack() {
+      if (historyStack.length > 0) {
+        const previous = historyStack.pop();
+        if (previous && data[previous]) {
+          openSubPage(previous);
+        } else {
+          // Nếu mục trước đó không tồn tại
+          goHome();
+        }
+      } else {
+        goHome();
+      }
+    }
+
+    // Về trang chủ
+    function goHome() {
+      historyStack = [];
+      currentTitle = '';
+      document.getElementById('subView').classList.add('hidden');
+      document.getElementById('mainView').classList.remove('hidden');
+      renderMain();
+    }
+
+    // Chuyển đổi chủ đề sáng/tối
+    function toggleTheme() {
+      if (currentTheme === 'light') {
+        document.body.classList.add('dark-theme');
+        currentTheme = 'dark';
+        localStorage.setItem('knowledgeTreeTheme', 'dark');
+      } else {
+        document.body.classList.remove('dark-theme');
+        currentTheme = 'light';
+        localStorage.setItem('knowledgeTreeTheme', 'light');
+      }
+      
+      // Cập nhật giao diện của TinyMCE nếu đang mở
+      if (editor) {
+        const content = editor.getContent();
+        editor.remove();
+        initTinyMCE('#newNodeContent', content);
+      }
+    }
+
+    // Đăng ký sự kiện thay đổi loại nút
+    document.getElementById('newNodeType').addEventListener('change', function() {
+      updateDialogFields(this.value);
+    });
+
+    // Đăng ký sự kiện chuyển đổi chủ đề
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
+    // Cấu hình Microsoft Authentication
+const msalConfig = {
+  auth: {
+    clientId: 'a8bd8006-9ec3-4d14-a4a1-86ef79a8f226', // Thay bằng Application ID từ Azure Portal
+    authority: 'https://login.microsoftonline.com/common',
+    redirectUri: 'http://localhost:5500', // URL hiện tại của ứng dụng
+  },
+  cache: {
+    cacheLocation: 'localStorage',
+    storeAuthStateInCookie: false
+  }
+};
+
+// Phạm vi quyền truy cập OneDrive
+const scopes = [
+  'files.readwrite',
+  'user.read'
+];
+
+let msalInstance = null;
+let account = null;
+
+// Khởi tạo MSAL
+function initMSAL() {
+  try {
+    // Import thư viện MSAL
+    const script = document.createElement('script');
+    script.src = 'https://alcdn.msauth.net/browser/2.30.0/js/msal-browser.min.js';
+    script.onload = () => {
+      msalInstance = new msal.PublicClientApplication(msalConfig);
+      
+      // Kiểm tra nếu người dùng đã đăng nhập
+      const currentAccounts = msalInstance.getAllAccounts();
+      if (currentAccounts.length > 0) {
+        account = currentAccounts[0];
+        updateOneDriveButtons(true);
+      } else {
+        updateOneDriveButtons(false);
+      }
+    };
+    document.head.appendChild(script);
+  } catch (error) {
+    console.error('Lỗi khởi tạo MSAL:', error);
+  }
+}
+
+// Đăng nhập vào Microsoft
+async function signInToMicrosoft() {
+  if (!msalInstance) {
+    alert('Đang tải thư viện Microsoft Authentication, vui lòng thử lại sau vài giây');
+    initMSAL();
+    return;
+  }
+  
+  try {
+    const loginResponse = await msalInstance.loginPopup({
+      scopes: scopes,
+      prompt: 'select_account'
+    });
+    
+    account = loginResponse.account;
+    updateOneDriveButtons(true);
+  } catch (error) {
+    console.error('Lỗi đăng nhập:', error);
+    alert('Không thể đăng nhập: ' + error);
+  }
+}
+
+// Đăng xuất
+async function signOutOfMicrosoft() {
+  if (!msalInstance) return;
+  
+  try {
+    await msalInstance.logoutPopup();
+    account = null;
+    updateOneDriveButtons(false);
+  } catch (error) {
+    console.error('Lỗi đăng xuất:', error);
+  }
+}
+
+// Lấy token truy cập
+async function getAccessToken() {
+  if (!msalInstance || !account) {
+    throw new Error('Chưa đăng nhập');
+  }
+  
+  try {
+    const silentRequest = {
+      scopes: scopes,
+      account: account,
+      forceRefresh: false
+    };
+    
+    const silentResult = await msalInstance.acquireTokenSilent(silentRequest);
+    return silentResult.accessToken;
+  } catch (error) {
+    console.error('Lỗi lấy token:', error);
+    
+    // Nếu token hết hạn, thử lấy lại
+    if (error instanceof msal.InteractionRequiredAuthError) {
+      const interactionResult = await msalInstance.acquireTokenPopup(silentRequest);
+      return interactionResult.accessToken;
+    }
+    
+    throw error;
+  }
+}
+
+// Lưu dữ liệu lên OneDrive
+// Cải thiện hàm lưu dữ liệu lên OneDrive
+async function saveToOneDrive() {
+  try {
+    if (!account) {
+      await signInToMicrosoft();
+      if (!account) return; // Người dùng hủy đăng nhập
+    }
+    
+    const accessToken = await getAccessToken();
+    
+    // Chuẩn bị dữ liệu với metadata
+    const metaData = {
+      data: data,
+      version: dataVersion++,
+      lastModified: Date.now(),
+      source: 'onedrive'
+    };
+    
+    const dataStr = JSON.stringify(metaData);
+    const fileName = 'cay-kien-thuc-' + new Date().toISOString().slice(0, 10) + '.json';
+    
+    // Hiển thị trạng thái
+    showStatus('Đang lưu lên OneDrive...');
+    
+    // Tạo upload session cho file lớn
+    const createSessionResponse = await fetch(
+      'https://graph.microsoft.com/v1.0/me/drive/root:/' + fileName + ':/createUploadSession',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + accessToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          "@microsoft.graph.conflictBehavior": "replace"
+        })
+      }
+    );
+    
+    if (!createSessionResponse.ok) {
+      throw new Error('Không thể tạo phiên tải lên: ' + await createSessionResponse.text());
+    }
+    
+    const sessionData = await createSessionResponse.json();
+    const uploadUrl = sessionData.uploadUrl;
+    
+    // Upload file
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: dataStr
+    });
+    
+    if (!uploadResponse.ok) {
+      throw new Error('Lỗi khi tải lên: ' + await uploadResponse.text());
+    }
+    
+    // Cập nhật thời gian đồng bộ
+    lastSyncTime = metaData.lastModified;
+    lastSyncSource = 'onedrive';
+    
+    // Lưu lại trạng thái đồng bộ vào localStorage
+    localStorage.setItem('lastSync', JSON.stringify({
+      time: lastSyncTime,
+      source: lastSyncSource,
+      version: metaData.version
+    }));
+    
+    updateSyncStatus();
+    hideStatus();
+    alert('Đã lưu dữ liệu lên OneDrive thành công!');
+  } catch (error) {
+    console.error('Lỗi lưu OneDrive:', error);
+    hideStatus();
+    alert('Không thể lưu lên OneDrive: ' + error.message);
+  }
+}
+
+// Tải dữ liệu từ OneDrive
+// Cải thiện hàm tải dữ liệu từ OneDrive
+async function loadFromOneDrive(autoSync = false) {
+  try {
+    if (!account) {
+      await signInToMicrosoft();
+      if (!account) return; // Người dùng hủy đăng nhập
+    }
+    
+    const accessToken = await getAccessToken();
+    
+    // Hiển thị trạng thái
+    showStatus('Đang tải danh sách tệp từ OneDrive...');
+    
+    // Lấy danh sách file JSON
+    const filesResponse = await fetch(
+      'https://graph.microsoft.com/v1.0/me/drive/root/search(q=\'.json\')?select=name,id,lastModifiedDateTime',
+      {
+        headers: {
+          'Authorization': 'Bearer ' + accessToken
+        }
+      }
+    );
+    
+    if (!filesResponse.ok) {
+      throw new Error('Không thể lấy danh sách tệp: ' + await filesResponse.text());
+    }
+    
+    const filesData = await filesResponse.json();
+    hideStatus();
+    
+    // Lọc chỉ các tệp cây kiến thức
+    const knowledgeFiles = filesData.value.filter(file => 
+      file.name.toLowerCase().includes('cay-kien-thuc') || 
+      file.name.toLowerCase().includes('knowledge')
+    );
+    
+    if (knowledgeFiles.length === 0) {
+      if (!autoSync) {
+        alert('Không tìm thấy tệp dữ liệu cây kiến thức nào trên OneDrive của bạn');
+      }
+      return false;
+    }
+    
+    // Sắp xếp theo thời gian sửa đổi mới nhất
+    knowledgeFiles.sort((a, b) => 
+      new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime)
+    );
+    
+    // Nếu là đồng bộ tự động, chọn file mới nhất
+    if (autoSync) {
+      const latestFile = knowledgeFiles[0];
+      return await loadOneDriveFile(latestFile.id, true);
+    } else {
+      // Hiển thị dialog chọn file
+      showFileSelectionDialog(knowledgeFiles, async (fileId) => {
+        await loadOneDriveFile(fileId, false);
+      });
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Lỗi tải từ OneDrive:', error);
+    hideStatus();
+    if (!autoSync) {
+      alert('Không thể tải từ OneDrive: ' + error.message);
+    }
+    return false;
+  }
+}
+
+// Hàm tải file cụ thể từ OneDrive
+async function loadOneDriveFile(fileId, autoSync = false) {
+  try {
+    showStatus('Đang tải dữ liệu...');
+    
+    const accessToken = await getAccessToken();
+    
+    // Tải nội dung file
+    const fileResponse = await fetch(
+      `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/content`,
+      {
+        headers: {
+          'Authorization': 'Bearer ' + accessToken
+        }
+      }
+    );
+    
+    if (!fileResponse.ok) {
+      throw new Error('Không thể tải tệp: ' + await fileResponse.text());
+    }
+    
+    const fileContent = await fileResponse.text();
+    let parsedData;
+    
+    try {
+      parsedData = JSON.parse(fileContent);
+    } catch (error) {
+      throw new Error('Dữ liệu không hợp lệ hoặc bị hỏng');
+    }
+    
+    // Kiểm tra định dạng dữ liệu
+    let oneDriveData, oneDriveVersion, oneDriveTimestamp;
+    
+    if (parsedData.data && parsedData.version !== undefined && parsedData.lastModified) {
+      // Định dạng mới có metadata
+      oneDriveData = parsedData.data;
+      oneDriveVersion = parsedData.version;
+      oneDriveTimestamp = parsedData.lastModified;
+    } else {
+      // Định dạng cũ - chuyển đổi
+      oneDriveData = parsedData;
+      oneDriveVersion = 1;
+      oneDriveTimestamp = Date.now();
+    }
+    
+    // Quyết định xử lý xung đột
+    if (autoSync) {
+      // Nếu tự động đồng bộ, so sánh thời gian
+      if (oneDriveTimestamp > lastSyncTime) {
+        // OneDrive có dữ liệu mới hơn
+        data = oneDriveData;
+        dataVersion = oneDriveVersion;
+        lastSyncTime = oneDriveTimestamp;
+        lastSyncSource = 'onedrive';
+        
+        // Lưu vào localStorage không dùng hàm saveData() để tránh tăng version
+        const metaData = {
+          data: data,
+          version: dataVersion,
+          lastModified: lastSyncTime,
+          source: lastSyncSource
+        };
+        localStorage.setItem('knowledgeTree', JSON.stringify(metaData));
+        
+        updateSyncStatus();
+        goHome();
+        return true;
+      } else {
+        // Local có dữ liệu mới hơn hoặc bằng, không làm gì
+        return false;
+      }
+    } else {
+      // Nếu người dùng chọn thủ công, hiển thị xác nhận
+      const confirmMessage = (oneDriveTimestamp > lastSyncTime) ? 
+        'Dữ liệu trên OneDrive mới hơn dữ liệu hiện tại. Bạn có muốn tải dữ liệu từ OneDrive?' :
+        'Dữ liệu hiện tại có thể mới hơn dữ liệu trên OneDrive. Bạn vẫn muốn tải dữ liệu từ OneDrive?';
+      
+      if (confirm(confirmMessage)) {
+        data = oneDriveData;
+        dataVersion = oneDriveVersion;
+        lastSyncTime = oneDriveTimestamp;
+        lastSyncSource = 'onedrive';
+        
+        // Lưu vào localStorage
+        const metaData = {
+          data: data,
+          version: dataVersion,
+          lastModified: lastSyncTime,
+          source: lastSyncSource
+        };
+        localStorage.setItem('knowledgeTree', JSON.stringify(metaData));
+        
+        updateSyncStatus();
+        goHome();
+        alert('Tải dữ liệu từ OneDrive thành công!');
+        return true;
+      }
+    }
+    
+    hideStatus();
+    return false;
+  } catch (error) {
+    console.error('Lỗi tải file OneDrive:', error);
+    hideStatus();
+    if (!autoSync) {
+      alert('Không thể tải tệp: ' + error.message);
+    }
+    return false;
+  }
+}
+
+// Thêm chức năng đồng bộ hóa tự động
+async function syncWithOneDrive() {
+  if (!account) {
+    showStatus('Đăng nhập để đồng bộ...');
+    await signInToMicrosoft();
+    if (!account) {
+      hideStatus();
+      return;
+    }
+  }
+  
+  showStatus('Đang đồng bộ hóa...');
+  
+  try {
+    // Kiểm tra xem có file trên OneDrive không
+    const hasLoadedFromOneDrive = await loadFromOneDrive(true);
+    
+    // Nếu không tải được từ OneDrive hoặc dữ liệu local mới hơn, lưu lên OneDrive
+    if (!hasLoadedFromOneDrive) {
+      // Thay vì gọi saveToOneDrive, thực hiện lưu đơn giản hơn cho đồng bộ tự động
+      const accessToken = await getAccessToken();
+      
+      const metaData = {
+        data: data,
+        version: dataVersion++,
+        lastModified: Date.now(),
+        source: 'onedrive'
+      };
+      
+      const dataStr = JSON.stringify(metaData);
+      const fileName = 'cay-kien-thuc-auto-sync.json';
+      
+      // Tạo upload session
+      const createSessionResponse = await fetch(
+        'https://graph.microsoft.com/v1.0/me/drive/root:/' + fileName + ':/createUploadSession',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + accessToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            "@microsoft.graph.conflictBehavior": "replace"
+          })
+        }
+      );
+      
+      if (!createSessionResponse.ok) {
+        throw new Error('Không thể tạo phiên tải lên');
+      }
+      
+      const sessionData = await createSessionResponse.json();
+      const uploadUrl = sessionData.uploadUrl;
+      
+      // Upload file
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: dataStr
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error('Lỗi khi tải lên');
+      }
+      
+      lastSyncTime = metaData.lastModified;
+      lastSyncSource = 'onedrive';
+      
+      // Lưu lại trạng thái đồng bộ vào localStorage
+      localStorage.setItem('lastSync', JSON.stringify({
+        time: lastSyncTime,
+        source: lastSyncSource,
+        version: metaData.version
+      }));
+    }
+    
+    updateSyncStatus();
+    hideStatus();
+    return true;
+  } catch (error) {
+    console.error('Lỗi đồng bộ:', error);
+    hideStatus();
+    return false;
+  }
+}
+
+// Hiển thị trạng thái đồng bộ
+function updateSyncStatus() {
+  // Xóa indicator cũ nếu có
+  let syncIndicator = document.getElementById('sync-indicator');
+  if (!syncIndicator) {
+    syncIndicator = document.createElement('div');
+    syncIndicator.id = 'sync-indicator';
+    syncIndicator.style.position = 'fixed';
+    syncIndicator.style.bottom = '20px';
+    syncIndicator.style.left = '20px';
+    syncIndicator.style.padding = '5px 10px';
+    syncIndicator.style.backgroundColor = 'var(--button-bg)';
+    syncIndicator.style.color = 'white';
+    syncIndicator.style.borderRadius = '5px';
+    syncIndicator.style.fontSize = '12px';
+    syncIndicator.style.opacity = '0.8';
+    syncIndicator.style.cursor = 'pointer';
+    syncIndicator.title = 'Nhấp để đồng bộ hóa';
+    syncIndicator.onclick = syncWithOneDrive;
+    document.body.appendChild(syncIndicator);
+  }
+  
+  if (lastSyncTime === 0) {
+    syncIndicator.innerHTML = '⚠️ Chưa đồng bộ';
+    syncIndicator.style.backgroundColor = '#ffc107';
+    syncIndicator.style.color = 'black';
+  } else {
+    const timeDiff = Math.floor((Date.now() - lastSyncTime) / 1000 / 60); // Số phút từ lần đồng bộ cuối
+    let syncText, syncColor;
+    
+    if (timeDiff < 5) {
+      syncText = '✅ Đã đồng bộ';
+      syncColor = '#28a745';
+    } else if (timeDiff < 60) {
+      syncText = '⏱️ Đồng bộ ' + timeDiff + ' phút trước';
+      syncColor = '#17a2b8';
+    } else {
+      const hours = Math.floor(timeDiff / 60);
+      syncText = '⚠️ Đồng bộ ' + hours + ' giờ trước';
+      syncColor = '#ffc107';
+    }
+    
+    syncIndicator.innerHTML = syncText;
+    syncIndicator.style.backgroundColor = syncColor;
+    syncIndicator.style.color = (syncColor === '#ffc107') ? 'black' : 'white';
+  }
+}
+
+// Thêm nút đồng bộ vào thanh controls
+function addSyncButton() {
+  const mainControls = document.querySelector('#mainView .controls');
+  const subControls = document.querySelector('#subView .controls');
+  
+  if (mainControls) {
+    // Xóa nút cũ nếu có
+    const oldSyncBtn = mainControls.querySelector('button[data-sync="auto"]');
+    if (oldSyncBtn) mainControls.removeChild(oldSyncBtn);
+    
+    // Thêm nút mới
+    const syncBtn = document.createElement('button');
+    syncBtn.innerHTML = '🔄 Đồng bộ';
+    syncBtn.setAttribute('data-sync', 'auto');
+    syncBtn.onclick = syncWithOneDrive;
+    mainControls.appendChild(syncBtn);
+  }
+  
+  if (subControls) {
+    // Xóa nút cũ nếu có
+    const oldSyncBtn = subControls.querySelector('button[data-sync="auto"]');
+    if (oldSyncBtn) subControls.removeChild(oldSyncBtn);
+    
+    // Thêm nút mới
+    const syncBtn = document.createElement('button');
+    syncBtn.innerHTML = '🔄 Đồng bộ';
+    syncBtn.setAttribute('data-sync', 'auto');
+    syncBtn.onclick = syncWithOneDrive;
+    subControls.appendChild(syncBtn);
+  }
+}
+
+// Thiết lập đồng bộ tự động theo khoảng thời gian
+function setupAutoSync() {
+  // Đồng bộ khi có thay đổi trong editor
+  if (editor) {
+    editor.on('change', _.debounce(() => {
+      if (account) {
+        syncWithOneDrive();
+      }
+    }, 10000)); // Đợi 10 giây không thay đổi thì mới đồng bộ
+  }
+  
+  // Đồng bộ định kỳ (15 phút) nếu đang đăng nhập OneDrive
+  setInterval(() => {
+    if (account) {
+      const timeSinceLastSync = Date.now() - lastSyncTime;
+      // Nếu đã hơn 15 phút kể từ lần đồng bộ cuối
+      if (timeSinceLastSync > 15 * 60 * 1000) {
+        syncWithOneDrive();
+      }
+    }
+  }, 5 * 60 * 1000); // Kiểm tra mỗi 5 phút
+}
+
+// Hàm tạo phiên sử dụng cho TinyMCE
+function setupAutoSave() {
+  // Tự động lưu khi người dùng dừng gõ
+  if (editor) {
+    editor.on('change', _.debounce(() => {
+      if (currentNoteBeingEdited && data[currentNoteBeingEdited]) {
+        data[currentNoteBeingEdited].content = editor.getContent();
+        saveData();
+      }
+    }, 2000)); // Đợi 2 giây không thay đổi thì mới lưu
+  }
+}
+
+// Cập nhật hàm initOneDriveIntegration để thêm các chức năng mới
+function initOneDriveIntegration() {
+  addOneDriveStyles();
+  
+  // Thêm CSS cho các thành phần đồng bộ
+  const style = document.createElement('style');
+  style.textContent += `
+    #sync-indicator {
+      transition: all 0.3s ease;
+      z-index: 999;
+    }
+    
+    #sync-indicator:hover {
+      opacity: 1;
+    }
+  `;
+  document.head.appendChild(style);
+  
+  // Thêm nút vào controls
+  const controls = document.createElement('div');
+  controls.className = 'controls';
+  
+  if (!document.querySelector('#mainView .controls')) {
+    document.getElementById('mainView').insertBefore(controls, document.getElementById('mainView').firstChild);
+  }
+  
+  // Khởi tạo MSAL sau khi DOM đã tải
+  setTimeout(() => {
+    initMSAL();
+    
+    // Thêm nút đồng bộ
+    addSyncButton();
+    
+    // Khởi tạo indicator trạng thái đồng bộ
+    updateSyncStatus();
+    
+    // Thiết lập đồng bộ tự động
+    setupAutoSync();
+  }, 500);
+}
+
+// Hàm debounce đơn giản nếu không có lodash
+function debounce(func, wait) {
+  let timeout;
+  return function(...args) {
+    const context = this;
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(context, args), wait);
+  };
+}
+
+// Kiểm tra xem có lodash không
+const _ = window._ || { 
+  debounce: debounce
+};
+
+// Hiển thị dialog chọn file
+function showFileSelectionDialog(files, onSelect) {
+  // Tạo dialog
+  const dialog = document.createElement('div');
+  dialog.className = 'dialog';
+  dialog.style.width = '500px';
+  
+  // Tiêu đề
+  const title = document.createElement('h3');
+  title.textContent = 'Chọn tệp từ OneDrive';
+  dialog.appendChild(title);
+  
+  // Danh sách file
+  const fileList = document.createElement('div');
+  fileList.style.maxHeight = '300px';
+  fileList.style.overflowY = 'auto';
+  fileList.style.margin = '15px 0';
+  fileList.style.border = '1px solid var(--border-color)';
+  fileList.style.borderRadius = '5px';
+  fileList.style.padding = '5px';
+  
+  files.forEach(file => {
+    const fileItem = document.createElement('div');
+    fileItem.style.padding = '10px';
+    fileItem.style.margin = '5px 0';
+    fileItem.style.borderRadius = '5px';
+    fileItem.style.backgroundColor = 'var(--card-bg)';
+    fileItem.style.cursor = 'pointer';
+    
+    // Format ngày
+    const date = new Date(file.lastModifiedDateTime);
+    const formattedDate = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+    
+    fileItem.innerHTML = `
+      <div><strong>${file.name}</strong></div>
+      <div style="font-size: 0.8em; color: #888;">Cập nhật: ${formattedDate}</div>
+    `;
+    
+    fileItem.addEventListener('click', () => {
+      document.body.removeChild(dialog);
+      onSelect(file.id);
+    });
+    
+    fileList.appendChild(fileItem);
+  });
+  
+  dialog.appendChild(fileList);
+  
+  // Nút hủy
+  const actions = document.createElement('div');
+  actions.className = 'dialog-actions';
+  
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = 'Hủy';
+  cancelBtn.onclick = () => document.body.removeChild(dialog);
+  actions.appendChild(cancelBtn);
+  
+  dialog.appendChild(actions);
+  
+  // Hiển thị dialog
+  document.body.appendChild(dialog);
+}
+
+// Cập nhật nút OneDrive
+function updateOneDriveButtons(isLoggedIn) {
+  // Thêm hoặc cập nhật nút OneDrive
+  const mainControls = document.querySelector('#mainView .controls');
+  const subControls = document.querySelector('#subView .controls');
+  
+  // Tạo các nút
+  const saveBtn = document.createElement('button');
+  saveBtn.innerHTML = '☁️ Lưu lên OneDrive';
+  saveBtn.onclick = saveToOneDrive;
+  
+  const loadBtn = document.createElement('button');
+  loadBtn.innerHTML = '☁️ Tải từ OneDrive';
+  loadBtn.onclick = loadFromOneDrive;
+  
+  const loginBtn = document.createElement('button');
+  loginBtn.innerHTML = isLoggedIn ? '🔓 Đăng xuất OneDrive' : '🔑 Đăng nhập OneDrive';
+  loginBtn.onclick = isLoggedIn ? signOutOfMicrosoft : signInToMicrosoft;
+  
+  // Thêm vào trang chính
+  if (mainControls) {
+    // Xóa nút cũ nếu có
+    const oldSaveBtn = mainControls.querySelector('button[data-onedrive="save"]');
+    const oldLoadBtn = mainControls.querySelector('button[data-onedrive="load"]');
+    const oldLoginBtn = mainControls.querySelector('button[data-onedrive="login"]');
+    
+    if (oldSaveBtn) mainControls.removeChild(oldSaveBtn);
+    if (oldLoadBtn) mainControls.removeChild(oldLoadBtn);
+    if (oldLoginBtn) mainControls.removeChild(oldLoginBtn);
+    
+    // Thêm nút mới
+    if (isLoggedIn) {
+      saveBtn.setAttribute('data-onedrive', 'save');
+      loadBtn.setAttribute('data-onedrive', 'load');
+      mainControls.appendChild(saveBtn);
+      mainControls.appendChild(loadBtn);
+    }
+    
+    loginBtn.setAttribute('data-onedrive', 'login');
+    mainControls.appendChild(loginBtn);
+  }
+  
+  // Thêm vào trang con
+  if (subControls) {
+    // Xóa nút cũ nếu có
+    const oldSaveBtn = subControls.querySelector('button[data-onedrive="save"]');
+    const oldLoadBtn = subControls.querySelector('button[data-onedrive="load"]');
+    const oldLoginBtn = subControls.querySelector('button[data-onedrive="login"]');
+    
+    if (oldSaveBtn) subControls.removeChild(oldSaveBtn);
+    if (oldLoadBtn) subControls.removeChild(oldLoadBtn);
+    if (oldLoginBtn) subControls.removeChild(oldLoginBtn);
+    
+    // Thêm nút mới
+    if (isLoggedIn) {
+      const saveBtnClone = saveBtn.cloneNode(true);
+      saveBtnClone.onclick = saveToOneDrive;
+      saveBtnClone.setAttribute('data-onedrive', 'save');
+      
+      const loadBtnClone = loadBtn.cloneNode(true);
+      loadBtnClone.onclick = loadFromOneDrive;
+      loadBtnClone.setAttribute('data-onedrive', 'load');
+      
+      subControls.appendChild(saveBtnClone);
+      subControls.appendChild(loadBtnClone);
+    }
+    
+    const loginBtnClone = loginBtn.cloneNode(true);
+    loginBtnClone.onclick = isLoggedIn ? signOutOfMicrosoft : signInToMicrosoft;
+    loginBtnClone.setAttribute('data-onedrive', 'login');
+    subControls.appendChild(loginBtnClone);
+  }
+}
+
+// Hiển thị trạng thái
+function showStatus(message) {
+  // Kiểm tra nếu đã có status box
+  let statusBox = document.getElementById('status-box');
+  
+  if (!statusBox) {
+    statusBox = document.createElement('div');
+    statusBox.id = 'status-box';
+    statusBox.style.position = 'fixed';
+    statusBox.style.bottom = '20px';
+    statusBox.style.right = '20px';
+    statusBox.style.padding = '10px 20px';
+    statusBox.style.backgroundColor = 'var(--button-bg)';
+    statusBox.style.color = 'white';
+    statusBox.style.borderRadius = '5px';
+    statusBox.style.zIndex = '9999';
+    statusBox.style.boxShadow = '0 0 10px rgba(0,0,0,0.2)';
+    document.body.appendChild(statusBox);
+  }
+  
+  statusBox.textContent = message;
+  statusBox.style.display = 'block';
+}
+
+// Ẩn trạng thái
+function hideStatus() {
+  const statusBox = document.getElementById('status-box');
+  if (statusBox) {
+    statusBox.style.display = 'none';
+  }
+}
+
+// Thêm CSS cho các thành phần mới
+function addOneDriveStyles() {
+  const style = document.createElement('style');
+  style.textContent = `
+    .file-item {
+      padding: 10px;
+      margin: 5px 0;
+      background-color: var(--card-bg);
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    
+    .file-item:hover {
+      background-color: rgba(104, 213, 155, 0.1);
+    }
+    
+    #status-box {
+      transition: all 0.3s ease;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// Khởi tạo OneDrive integration
+function initOneDriveIntegration() {
+  addOneDriveStyles();
+  
+  // Thêm nút vào controls
+  const controls = document.createElement('div');
+  controls.className = 'controls';
+  
+  if (!document.querySelector('#mainView .controls')) {
+    document.getElementById('mainView').insertBefore(controls, document.getElementById('mainView').firstChild);
+  }
+  
+  // Khởi tạo MSAL sau khi DOM đã tải
+  setTimeout(initMSAL, 500);
+}
+
+// Gọi hàm này trong initApp() để khởi tạo OneDrive
+function initApp() {
+  try {
+    // Tải chủ đề
+    const savedTheme = localStorage.getItem('knowledgeTreeTheme');
+    if (savedTheme === 'dark') {
+      document.body.classList.add('dark-theme');
+      currentTheme = 'dark';
+    }
+    
+    // Tải dữ liệu
+    loadData();
+    renderMain();
+    
+    // Khởi tạo OneDrive
+    initOneDriveIntegration();
+    
+  } catch (error) {
+    console.error('Lỗi khởi tạo ứng dụng:', error);
+    alert('Đã xảy ra lỗi khi khởi tạo ứng dụng. Dữ liệu sẽ được thiết lập lại.');
+    resetToDefaultData();
+    renderMain();
+    initOneDriveIntegration();  // Vẫn khởi tạo OneDrive
+  }
+}
+
+    // Bắt đầu ứng dụng khi trang đã tải xong
+    document.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>

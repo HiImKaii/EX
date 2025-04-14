@@ -1,0 +1,288 @@
+// 1. Thêm các biến và cấu trúc dữ liệu cho hệ thống đăng nhập
+let currentUser = null;
+let users = {};
+
+// 2. Hàm khởi tạo hệ thống người dùng
+function initUserSystem() {
+  // Tải danh sách người dùng từ localStorage
+  const savedUsers = localStorage.getItem('knowledgeTreeUsers');
+  if (savedUsers) {
+    users = JSON.parse(savedUsers);
+  } else {
+    // Tạo người dùng admin mặc định nếu chưa có người dùng nào
+    users = {
+      'admin': {
+        password: 'admin123', // Trong thực tế, bạn nên mã hóa mật khẩu
+        isAdmin: true
+      }
+    };
+    saveUsers();
+  }
+  
+  // Kiểm tra phiên đăng nhập
+  const loggedInUser = localStorage.getItem('knowledgeTreeCurrentUser');
+  if (loggedInUser) {
+    currentUser = loggedInUser;
+    showLoggedInUI();
+  } else {
+    showLoginUI();
+  }
+}
+
+// 3. Lưu danh sách người dùng
+function saveUsers() {
+  localStorage.setItem('knowledgeTreeUsers', JSON.stringify(users));
+}
+
+// 4. Hiển thị giao diện đăng nhập
+function showLoginUI() {
+  // Ẩn giao diện chính
+  document.getElementById('mainView').classList.add('hidden');
+  document.getElementById('subView').classList.add('hidden');
+  
+  // Tạo và hiển thị form đăng nhập
+  const loginForm = document.createElement('div');
+  loginForm.id = 'loginView';
+  loginForm.innerHTML = `
+    <div class="login-container" style="max-width: 400px; margin: 100px auto; padding: 20px; background: var(--card-bg); border-radius: 12px; box-shadow: 0 8px 16px var(--shadow-color);">
+      <h2 style="margin-bottom: 20px;">Đăng nhập</h2>
+      <div style="margin-bottom: 15px;">
+        <input type="text" id="username" placeholder="Tên đăng nhập" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color);">
+      </div>
+      <div style="margin-bottom: 20px;">
+        <input type="password" id="password" placeholder="Mật khẩu" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color);">
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <button id="loginBtn" style="padding: 10px 20px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 6px; cursor: pointer;">Đăng nhập</button>
+        <button id="registerBtn" style="padding: 10px 20px; background: var(--card-bg); color: var(--button-bg); border: 1px solid var(--button-bg); border-radius: 6px; cursor: pointer;">Đăng ký</button>
+      </div>
+      <div id="loginMessage" style="margin-top: 15px; color: #ff6b6b;"></div>
+    </div>
+  `;
+  
+  document.body.appendChild(loginForm);
+  
+  // Thêm sự kiện cho nút đăng nhập
+  document.getElementById('loginBtn').addEventListener('click', login);
+  document.getElementById('registerBtn').addEventListener('click', showRegisterUI);
+  
+  // Cho phép nhấn Enter để đăng nhập
+  document.getElementById('password').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      login();
+    }
+  });
+}
+
+// 5. Xử lý đăng nhập
+function login() {
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  
+  if (!username || !password) {
+    document.getElementById('loginMessage').textContent = 'Vui lòng nhập đầy đủ thông tin';
+    return;
+  }
+  
+  if (users[username] && users[username].password === password) {
+    currentUser = username;
+    localStorage.setItem('knowledgeTreeCurrentUser', username);
+    
+    // Tải dữ liệu của người dùng
+    loadUserData();
+    
+    // Ẩn form đăng nhập và hiển thị giao diện chính
+    hideLoginUI();
+    showLoggedInUI();
+  } else {
+    document.getElementById('loginMessage').textContent = 'Tên đăng nhập hoặc mật khẩu không chính xác';
+  }
+}
+
+// 6. Hiển thị giao diện đăng ký
+function showRegisterUI() {
+  const loginView = document.getElementById('loginView');
+  loginView.innerHTML = `
+    <div class="login-container" style="max-width: 400px; margin: 100px auto; padding: 20px; background: var(--card-bg); border-radius: 12px; box-shadow: 0 8px 16px var(--shadow-color);">
+      <h2 style="margin-bottom: 20px;">Đăng ký</h2>
+      <div style="margin-bottom: 15px;">
+        <input type="text" id="newUsername" placeholder="Tên đăng nhập" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color);">
+      </div>
+      <div style="margin-bottom: 15px;">
+        <input type="password" id="newPassword" placeholder="Mật khẩu" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color);">
+      </div>
+      <div style="margin-bottom: 20px;">
+        <input type="password" id="confirmPassword" placeholder="Xác nhận mật khẩu" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); color: var(--text-color);">
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <button id="createAccountBtn" style="padding: 10px 20px; background: var(--button-bg); color: var(--button-text); border: none; border-radius: 6px; cursor: pointer;">Tạo tài khoản</button>
+        <button id="backToLoginBtn" style="padding: 10px 20px; background: var(--card-bg); color: var(--button-bg); border: 1px solid var(--button-bg); border-radius: 6px; cursor: pointer;">Quay lại đăng nhập</button>
+      </div>
+      <div id="registerMessage" style="margin-top: 15px; color: #ff6b6b;"></div>
+    </div>
+  `;
+  
+  document.getElementById('createAccountBtn').addEventListener('click', register);
+  document.getElementById('backToLoginBtn').addEventListener('click', showLoginUI);
+}
+
+// 7. Xử lý đăng ký
+function register() {
+  const username = document.getElementById('newUsername').value;
+  const password = document.getElementById('newPassword').value;
+  const confirmPassword = document.getElementById('confirmPassword').value;
+  
+  if (!username || !password || !confirmPassword) {
+    document.getElementById('registerMessage').textContent = 'Vui lòng nhập đầy đủ thông tin';
+    return;
+  }
+  
+  if (password !== confirmPassword) {
+    document.getElementById('registerMessage').textContent = 'Mật khẩu xác nhận không khớp';
+    return;
+  }
+  
+  if (users[username]) {
+    document.getElementById('registerMessage').textContent = 'Tên đăng nhập đã tồn tại';
+    return;
+  }
+  
+  // Tạo người dùng mới
+  users[username] = {
+    password: password,
+    isAdmin: false
+  };
+  
+  // Lưu danh sách người dùng
+  saveUsers();
+  
+  // Thông báo thành công và quay lại màn hình đăng nhập
+  alert('Đăng ký thành công! Bạn có thể đăng nhập ngay bây giờ.');
+  showLoginUI();
+}
+
+// 8. Ẩn giao diện đăng nhập
+function hideLoginUI() {
+  const loginView = document.getElementById('loginView');
+  if (loginView) {
+    loginView.remove();
+  }
+}
+
+// 9. Hiển thị giao diện đã đăng nhập
+function showLoggedInUI() {
+  document.getElementById('mainView').classList.remove('hidden');
+  
+  // Thêm thông tin người dùng và nút đăng xuất
+  const userControls = document.createElement('div');
+  userControls.id = 'userControls';
+  userControls.style = 'position: fixed; top: 20px; left: 20px; z-index: 100; display: flex; align-items: center;';
+  userControls.innerHTML = `
+    <span style="margin-right: 10px; background: var(--card-bg); padding: 8px; border-radius: 6px; box-shadow: 0 2px 6px var(--shadow-color);">
+      👤 ${currentUser}
+    </span>
+    <button id="logoutBtn" style="padding: 8px; background: #ff6b6b; color: white; border: none; border-radius: 6px; cursor: pointer;">
+      Đăng xuất
+    </button>
+  `;
+  
+  document.body.appendChild(userControls);
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+  
+  // Hiển thị dữ liệu người dùng
+  renderCurrentView();
+}
+
+// 10. Xử lý đăng xuất
+function logout() {
+  // Lưu dữ liệu người dùng trước khi đăng xuất
+  saveData();
+  
+  // Xóa thông tin người dùng hiện tại
+  localStorage.removeItem('knowledgeTreeCurrentUser');
+  currentUser = null;
+  
+  // Xóa giao diện người dùng
+  const userControls = document.getElementById('userControls');
+  if (userControls) {
+    userControls.remove();
+  }
+  
+  // Hiển thị giao diện đăng nhập
+  showLoginUI();
+}
+
+// 11. Cập nhật hàm loadData để hỗ trợ nhiều người dùng
+function loadUserData() {
+  try {
+    const userDataKey = `knowledgeTree_${currentUser}`;
+    const saved = localStorage.getItem(userDataKey);
+    
+    if (saved) {
+      data = JSON.parse(saved);
+      // Kiểm tra và sửa chữa dữ liệu bị hỏng
+      for (let key in data) {
+        if (data[key].type === 'sub' && !Array.isArray(data[key].children)) {
+          data[key].children = [];
+        }
+      }
+    } else {
+      // Dữ liệu mẫu cho người dùng mới
+      data = {
+        'Học tập': { type: 'sub', children: [] },
+        'Sở thích': { type: 'sub', children: [] },
+        'Công việc': { type: 'sub', children: [] }
+      };
+    }
+  } catch (error) {
+    console.error('Lỗi khi tải dữ liệu người dùng:', error);
+    data = {};
+    // Tạo dữ liệu mặc định nếu có lỗi
+    resetToDefaultData();
+  }
+}
+
+// 12. Cập nhật hàm saveData để hỗ trợ nhiều người dùng
+function saveData() {
+  if (!currentUser) return; // Không lưu nếu chưa đăng nhập
+  
+  try {
+    const userDataKey = `knowledgeTree_${currentUser}`;
+    localStorage.setItem(userDataKey, JSON.stringify(data));
+  } catch (error) {
+    console.error('Lỗi khi lưu dữ liệu:', error);
+    alert('Không thể lưu dữ liệu. Vui lòng thử lại.');
+  }
+}
+
+// 13. Cập nhật hàm initApp
+function initApp() {
+  try {
+    // Tải chủ đề
+    const savedTheme = localStorage.getItem('knowledgeTreeTheme');
+    if (savedTheme === 'dark') {
+      document.body.classList.add('dark-theme');
+      currentTheme = 'dark';
+    }
+    
+    // Khởi tạo hệ thống người dùng
+    initUserSystem();
+  } catch (error) {
+    console.error('Lỗi khởi tạo ứng dụng:', error);
+    alert('Đã xảy ra lỗi khi khởi tạo ứng dụng. Dữ liệu sẽ được thiết lập lại.');
+    resetToDefaultData();
+    renderMain();
+  }
+}
+
+
+<!-- Để tích hợp tính năng này vào ứng dụng của bạn:
+
+Thay thế hàm loadData() hiện tại bằng hàm loadUserData()
+Cập nhật hàm saveData() để lưu dữ liệu theo người dùng
+Thay thế hàm initApp() bằng phiên bản mới
+Thêm các hàm mới liên quan đến xác thực (đăng nhập, đăng ký, đăng xuất)
+Thêm biến và cấu trúc dữ liệu cho hệ thống người dùng
+
+Đây là hệ thống xác thực cơ bản sử dụng localStorage, phù hợp cho các ứng dụng nhỏ và trung bình. Nó cho phép người dùng đăng ký tài khoản mới, đăng nhập và mỗi người dùng sẽ có cây kiến thức riêng của họ.
+Lưu ý: Đây chỉ là xác thực cơ bản ở phía máy khách và không bảo mật cao. Trong môi trường thực tế, bạn nên xem xét sử dụng máy chủ backend để quản lý xác thực và mã hóa mật khẩu. -->
