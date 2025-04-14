@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "d:/Vscode/Cpp/src/Week5",
-      "program": "d:/Vscode/Cpp/src/Week5/build/Debug/outDebug",
+      "cwd": "d:/Vscode/Cpp/src/Week7",
+      "program": "d:/Vscode/Cpp/src/Week7/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

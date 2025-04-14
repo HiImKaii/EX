@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cây kiến thức cá nhân</title>
+  <!-- Thêm thư viện TinyMCE cho rich text editing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.6.2/tinymce.min.js"></script>
+  <!-- Thêm thư viện Sortable.js cho drag & drop -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <style>
+    :root {
+      --bg-color: #f0f2f5;
+      --text-color: #333;
+      --card-bg: #ffffff;
+      --dialog-bg: #ffffff;
+      --dialog-text: #333;
+      --button-bg: #007acc;
+      --button-text: white;
+      --button-hover: #005f99;
+      --header-color: #333;
+      --border-color: #ddd;
+      --shadow-color: rgba(0,0,0,0.1);
+    }
+
+    .dark-theme {
+      --bg-color: #1a1a1a;
+      --text-color: #e0e0e0;
+      --card-bg: #2d2d2d;
+      --dialog-bg: #2d2d2d;
+      --dialog-text: #e0e0e0;
+      --button-bg: #2c5d8a;
+      --button-text: #e0e0e0;
+      --button-hover: #3a7ab5;
+      --header-color: #e0e0e0;
+      --border-color: #444;
+      --shadow-color: rgba(0,0,0,0.4);
+    }
+
+    body {
+      font-family: sans-serif;
+      background: var(--bg-color);
+      padding: 20px;
+      text-align: center;
+      color: var(--text-color);
+      transition: all 0.3s ease;
+    }
+
+    h1, h2, h3 {
+      color: var(--header-color);
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    .container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 2cm;
+      margin-top: 20px;
+    }
+
+    .node {
+      border-radius: 12px;
+      width: 10cm;
+      height: 10cm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 10px;
+      cursor: pointer;
+      transition: all 0.3s;
+      position: relative;
+      flex-shrink: 0;
+      color: white;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .node.dragging {
+      opacity: 0.5;
+      transform: scale(0.95);
+    }
+
+    .node-controls {
+      position: absolute;
+      bottom: 5px;
+      right: 5px;
+      display: flex;
+      gap: 5px;
+    }
+
+    .node-controls button {
+      font-size: 12px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      background-color: #dc3545;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    .node-controls button.edit {
+      background-color: #ffc107;
+      color: black;
+    }
+
+    .drag-handle {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      cursor: grab;
+      padding: 5px;
+      font-size: 18px;
+      border-radius: 4px;
+      background-color: rgba(255,255,255,0.2);
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .controls {
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      margin: 5px;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 6px;
+      background-color: var(--button-bg);
+      color: var(--button-text);
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    button:hover {
+      background-color: var(--button-hover);
+    }
+
+    .add-node-button {
+      background: var(--card-bg);
+      color: var(--text-color);
+      font-size: 24px;
+      font-weight: bold;
+      border: 2px dashed var(--border-color);
+      box-shadow: none;
+    }
+
+    .add-node-button:hover {
+      background: rgba(104, 213, 155, 0.1);
+    }
+
+    .dialog {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--dialog-bg);
+      color: var(--dialog-text);
+      border-radius: 20px;
+      padding: 30px;
+      box-shadow: 0 0 25px var(--shadow-color);
+      z-index: 1000;
+      width: 600px;
+      max-width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .dialog label, .dialog select, .dialog input {
+      display: block;
+      width: 100%;
+      margin-bottom: 15px;
+      font-size: 16px;
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+      padding: 8px;
+      border-radius: 4px;
+    }
+
+    .dialog-actions {
+      text-align: right;
+      margin-top: 20px;
+    }
+
+    .theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 100;
+      background-color: var(--button-bg);
+      color: var(--button-text);
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--shadow-color);
+    }
+
+    /* Hiệu ứng drag & drop */
+    .drop-zone {
+      border: 2px dashed #4caf50;
+      background-color: rgba(76, 175, 80, 0.1);
+    }
+
+    .note-content {
+      width: 100%;
+      height: 300px;
+      margin-top: 10px;
+    }
+
+    /* TinyMCE customization */
+    .tox-tinymce {
+      border-radius: 8px;
+    }
+
+    #note-preview-dialog {
+      width: 80%;
+      max-width: 800px;
+      height: 80vh;
+    }
+
+    .note-preview-content {
+      text-align: left;
+      padding: 20px;
+      height: calc(100% - 80px);
+      overflow-y: auto;
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      border-radius: 8px;
+    }
+
+    /* Mobile responsiveness */
+    @media (max-width: 768px) {
+      .node {
+        width: 80%;
+        height: 200px;
+      }
+
+      .container {
+        gap: 1cm;
+      }
+
+      .dialog {
+        width: 95%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="theme-toggle" id="themeToggle">🌓</div>
+  <h1>Cây kiến thức cá nhân</h1>
+
+  <div id="mainView">
+    <div class="container" id="mainContainer"></div>
+  </div>
+
+  <div id="subView" class="hidden">
+    <div class="controls">
+      <button onclick="goHome()">🏠 Trang chủ</button>
+      <button onclick="goBack()">← Quay lại</button>
+    </div>
+    <h2 id="subTitle"></h2>
+    <div id="subContent" class="container"></div>
+  </div>
+
+  <div id="dialog" class="dialog hidden">
+    <h3 id="dialogTitle">Tạo mục mới</h3>
+    <input type="text" id="newNodeName" placeholder="Tên mục">
+    <select id="newNodeType">
+      <option value="sub">📁 Mục con</option>
+      <option value="text">📝 Ghi chú</option>
+      <option value="link">🔗 Liên kết</option>
+    </select>
+    <div id="contentInputContainer">
+      <input type="text" id="newNodeLink" placeholder="URL liên kết" class="hidden">
+      <div id="richTextEditor" class="hidden">
+        <textarea id="newNodeContent" class="note-content"></textarea>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button id="createNodeBtn">Tạo</button>
+      <button onclick="hideDialog()">Hủy</button>
+    </div>
+  </div>
+
+  <div id="note-preview-dialog" class="dialog hidden">
+    <h3 id="noteTitle"></h3>
+    <div class="note-preview-content" id="noteContent"></div>
+    <div class="dialog-actions">
+      <button onclick="editCurrentNote()">Sửa</button>
+      <button onclick="hideNotePreview()">Đóng</button>
+    </div>
+  </div>
+
+  <script>
+    let data = {};
+    let currentTitle = '';
+    let historyStack = [];
+    let currentTheme = 'light';
+    let currentNoteBeingEdited = '';
+    let editor = null;
+
+    // Khởi tạo TinyMCE
+function initTinyMCE(selector, content = '') {
+  if (editor) {
+    editor.remove();
+  }
+
+  return tinymce.init({
+    selector: selector,
+    height: 300,
+    menubar: false,
+    plugins: [
+      'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview', 'anchor',
+      'searchreplace', 'visualblocks', 'code', 'fullscreen',
+      'insertdatetime', 'media', 'table', 'code', 'help', 'wordcount'
+    ],
+    toolbar: 'undo redo | formatselect | ' +
+      'bold italic backcolor | alignleft aligncenter ' +
+      'alignright alignjustify | bullist numlist outdent indent | ' +
+      'removeformat | image | help',
+    content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:14px }',
+    setup: function(ed) {
+      editor = ed;
+      ed.on('init', function() {
+        ed.setContent(content).then(() => {
+          setupAutoSave();
+        });
+      });
+    },
+    skin: currentTheme === 'dark' ? 'oxide-dark' : 'oxide',
+    content_css: currentTheme === 'dark' ? 'dark' : 'default',
+    // Cấu hình chèn ảnh
+    image_title: true,
+    file_picker_types: 'image',
+    // Sử dụng Base64 để lưu trữ ảnh trực tiếp trong nội dung
+    images_upload_handler: function (blobInfo, progress) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function () {
+          resolve(reader.result);
+        };
+        reader.onerror = function () {
+          reject('Không thể đọc file');
+        };
+        reader.readAsDataURL(blobInfo.blob());
+      });
+    },
+    // Giới hạn kích thước tối đa (2MB)
+    max_file_size: 2097152
+  });
+}
+
+function checkStorageSize() {
+  try {
+    const dataSize = JSON.stringify(data).length;
+    const storageSizeMB = (dataSize / (1024 * 1024)).toFixed(2);
+    
+    // Nếu kích thước dữ liệu vượt quá 5MB, cảnh báo người dùng
+    if (dataSize > 5 * 1024 * 1024) {
+      alert(`Cảnh báo: Dữ liệu của bạn hiện đã đạt ${storageSizeMB}MB. Nhiều hình ảnh có thể làm chậm ứng dụng. Hãy cân nhắc tối ưu hoặc xóa bớt hình ảnh không cần thiết.`);
+    }
+    
+    return storageSizeMB;
+  } catch (error) {
+    console.error('Lỗi khi kiểm tra kích thước dữ liệu:', error);
+    return '0.00';
+  }
+}
+    // Lưu dữ liệu
+function saveData() {
+  try {
+    localStorage.setItem('knowledgeTree', JSON.stringify(data));
+    checkStorageSize(); // Kiểm tra kích thước sau khi lưu
+  } catch (error) {
+    console.error('Lỗi khi lưu dữ liệu:', error);
+    if (error.name === 'QuotaExceededError') {
+      alert('Không thể lưu dữ liệu do đã vượt quá giới hạn dung lượng lưu trữ. Vui lòng xóa bớt hình ảnh hoặc xuất dữ liệu để sao lưu.');
+    } else {
+      alert('Không thể lưu dữ liệu. Vui lòng thử lại.');
+    }
+  }
+}
+
+    // Tải dữ liệu
+    function loadData() {
+      try {
+        const saved = localStorage.getItem('knowledgeTree');
+        if (saved) {
+          data = JSON.parse(saved);
+          // Kiểm tra và sửa chữa dữ liệu bị hỏng
+          for (let key in data) {
+            if (data[key].type === 'sub' && !Array.isArray(data[key].children)) {
+              data[key].children = [];
+            }
+          }
+        } else {
+          // Dữ liệu mẫu
+          data = {
+            'Học tập': { type: 'sub', children: ['Toán', 'Lập trình'] },
+            'Toán': { type: 'sub', children: ['Giải tích', 'Đại số'] },
+            'Lập trình': { type: 'sub', children: [] },
+            'Giải tích': { type: 'text', content: '<p>Nội dung về giải tích...</p>' },
+            'Đại số': { type: 'text', content: '<p>Nội dung về đại số...</p>' },
+            'Game': { type: 'sub', children: ['Game yêu thích', 'Link Steam'] },
+            'Game yêu thích': { type: 'text', content: '<p>Skyrim, Witcher 3...</p>' },
+            'Link Steam': { type: 'link', content: 'https://store.steampowered.com/' },
+            'Văn hóa': { type: 'sub', children: ['Âm nhạc', 'Lễ hội'] },
+            'Âm nhạc': { type: 'text', content: '<p>Các bài hát yêu thích...</p>' },
+            'Lễ hội': { type: 'text', content: '<p>Các lễ hội văn hóa...</p>' },
+            'Phim ảnh': { type: 'sub', children: ['Phim yêu thích'] },
+            'Phim yêu thích': { type: 'text', content: '<p>Inception, Interstellar...</p>' },
+            'Chính trị': { type: 'sub', children: ['Tin tức', 'Lịch sử'] },
+            'Tin tức': { type: 'link', content: 'https://news.example.com' },
+            'Lịch sử': { type: 'text', content: '<p>Các sự kiện lịch sử quan trọng...</p>' }
+          };
+        }
+      } catch (error) {
+        console.error('Lỗi khi tải dữ liệu:', error);
+        data = {};
+        // Tạo dữ liệu mặc định nếu có lỗi
+        resetToDefaultData();
+      }
+    }
+
+    // Đặt lại dữ liệu mặc định
+    function resetToDefaultData() {
+      data = {
+        'Học tập': { type: 'sub', children: [] },
+        'Sở thích': { type: 'sub', children: [] }
+      };
+      saveData();
+    }
+
+    // Hiển thị hộp thoại tạo/chỉnh sửa
+    function showDialog(isEdit = false, nodeName = '') {
+      document.getElementById('dialog').classList.remove('hidden');
+      const dialogTitle = document.getElementById('dialogTitle');
+      const createBtn = document.getElementById('createNodeBtn');
+      
+      if (isEdit && nodeName) {
+        dialogTitle.innerText = 'Chỉnh sửa mục';
+        createBtn.innerText = 'Cập nhật';
+        document.getElementById('newNodeName').value = nodeName;
+        
+        if (data[nodeName]) {
+          const nodeType = data[nodeName].type;
+          document.getElementById('newNodeType').value = nodeType;
+          updateDialogFields(nodeType);
+          
+          if (nodeType === 'link') {
+            document.getElementById('newNodeLink').value = data[nodeName].content || '';
+          } else if (nodeType === 'text') {
+            currentNoteBeingEdited = nodeName;
+            initTinyMCE('#newNodeContent', data[nodeName].content || '');
+          }
+        }
+        
+        createBtn.onclick = function() {
+          updateNode(nodeName);
+        };
+      } else {
+        dialogTitle.innerText = 'Tạo mục mới';
+        createBtn.innerText = 'Tạo';
+        document.getElementById('newNodeName').value = '';
+        document.getElementById('newNodeType').value = 'sub';
+        document.getElementById('newNodeLink').value = '';
+        currentNoteBeingEdited = '';
+        
+        updateDialogFields('sub');
+        initTinyMCE('#newNodeContent', '');
+        
+        createBtn.onclick = createNode;
+      }
+      
+      document.getElementById('newNodeName').focus();
+    }
+
+    // Cập nhật trường trong hộp thoại dựa trên loại nút
+    function updateDialogFields(type) {
+      const linkInput = document.getElementById('newNodeLink');
+      const richTextEditor = document.getElementById('richTextEditor');
+      
+      if (type === 'link') {
+        linkInput.classList.remove('hidden');
+        richTextEditor.classList.add('hidden');
+      } else if (type === 'text') {
+        linkInput.classList.add('hidden');
+        richTextEditor.classList.remove('hidden');
+      } else {
+        linkInput.classList.add('hidden');
+        richTextEditor.classList.add('hidden');
+      }
+    }
+
+    // Ẩn hộp thoại
+    function hideDialog() {
+      document.getElementById('dialog').classList.add('hidden');
+      if (editor) {
+        editor.remove();
+        editor = null;
+      }
+    }
+
+    // Hiển thị xem trước ghi chú
+    function showNotePreview(name) {
+      if (!data[name] || data[name].type !== 'text') return;
+      
+      document.getElementById('noteTitle').innerText = name;
+      document.getElementById('noteContent').innerHTML = data[name].content || '<p>Không có nội dung</p>';
+      document.getElementById('note-preview-dialog').classList.remove('hidden');
+      currentNoteBeingEdited = name;
+    }
+
+    // Ẩn xem trước ghi chú
+    function hideNotePreview() {
+      document.getElementById('note-preview-dialog').classList.add('hidden');
+    }
+
+    // Chỉnh sửa ghi chú hiện tại
+    function editCurrentNote() {
+      hideNotePreview();
+      if (currentNoteBeingEdited) {
+        showDialog(true, currentNoteBeingEdited);
+      }
+    }
+
+    // Tạo nút mới
+    function createNode() {
+      const name = document.getElementById('newNodeName').value.trim();
+      const type = document.getElementById('newNodeType').value;
+      let content = '';
+      
+      if (!name) {
+        alert('Vui lòng nhập tên cho mục mới!');
+        return;
+      }
+      
+      if (data[name]) {
+        alert('Tên này đã tồn tại! Vui lòng chọn tên khác.');
+        return;
+      }
+      
+      if (type === 'link') {
+        content = document.getElementById('newNodeLink').value.trim();
+        if (!content) {
+          alert('Vui lòng nhập URL cho liên kết!');
+          return;
+        }
+      } else if (type === 'text') {
+        if (editor) {
+          content = editor.getContent();
+        }
+        if (!content) {
+          alert('Vui lòng nhập nội dung cho ghi chú!');
+          return;
+        }
+      }
+
+      data[name] = { type };
+      if (type === 'sub') {
+        data[name].children = [];
+      } else {
+        data[name].content = content;
+      }
+
+      if (currentTitle && data[currentTitle] && data[currentTitle].type === 'sub') {
+        if (!Array.isArray(data[currentTitle].children)) {
+          data[currentTitle].children = [];
+        }
+        data[currentTitle].children.push(name);
+      }
+
+      saveData();
+      hideDialog();
+      renderCurrentView();
+    }
+
+    // Cập nhật nút
+    function updateNode(oldName) {
+      const newName = document.getElementById('newNodeName').value.trim();
+      const type = document.getElementById('newNodeType').value;
+      let content = '';
+      
+      if (!newName) {
+        alert('Tên mục không được để trống!');
+        return;
+      }
+      
+      if (newName !== oldName && data[newName]) {
+        alert('Tên này đã tồn tại! Vui lòng chọn tên khác.');
+        return;
+      }
+      
+      if (type === 'link') {
+        content = document.getElementById('newNodeLink').value.trim();
+        if (!content) {
+          alert('Vui lòng nhập URL cho liên kết!');
+          return;
+        }
+      } else if (type === 'text') {
+        if (editor) {
+          content = editor.getContent();
+        }
+        if (!content) {
+          alert('Vui lòng nhập nội dung cho ghi chú!');
+          return;
+        }
+      }
+      
+      // Nếu thay đổi loại nút
+      if (data[oldName].type !== type) {
+        if (type === 'sub') {
+          data[oldName] = { type, children: [] };
+        } else {
+          data[oldName] = { type, content };
+        }
+      } else {
+        // Nếu chỉ thay đổi nội dung
+        if (type !== 'sub') {
+          data[oldName].content = content;
+        }
+      }
+      
+      // Nếu đổi tên
+      if (newName !== oldName) {
+        data[newName] = JSON.parse(JSON.stringify(data[oldName]));
+        delete data[oldName];
+        
+        // Cập nhật tham chiếu trong các nút cha
+        for (let key in data) {
+          if (data[key].type === 'sub' && Array.isArray(data[key].children)) {
+            const idx = data[key].children.indexOf(oldName);
+            if (idx !== -1) {
+              data[key].children[idx] = newName;
+            }
+          }
+        }
+      }
+      
+      saveData();
+      hideDialog();
+      renderCurrentView();
+    }
+
+    // Tạo phần tử nút
+    function createNodeElement(name, parent = '') {
+      if (!data[name]) {
+        console.error('Node không tồn tại:', name);
+        return document.createElement('div'); // Trả về phần tử trống để tránh lỗi
+      }
+      
+      const item = data[name];
+      const div = document.createElement('div');
+      const colors = ['#ff6b6b', '#6bc5ff', '#ffe66d', '#6bff95', '#a66bff', '#ff9a6b'];
+      const colorIndex = Math.abs(name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % colors.length;
+      const color = colors[colorIndex];
+
+      div.className = 'node';
+      div.setAttribute('data-name', name);
+      div.style.background = color;
+      div.style.boxShadow = `0 0 20px ${color}80`;
+
+      let icon = '📁';
+      if (item.type === 'text') icon = '📝';
+      if (item.type === 'link') icon = '🔗';
+
+      // Thêm handle kéo thả
+      const dragHandle = document.createElement('div');
+      dragHandle.className = 'drag-handle';
+      dragHandle.innerHTML = '⋮⋮';
+      dragHandle.setAttribute('title', 'Kéo để di chuyển');
+      div.appendChild(dragHandle);
+
+      const content = document.createElement('div');
+      content.innerHTML = `${icon}<br>${name}`;
+      content.style.pointerEvents = 'none'; // Để tránh ảnh hưởng đến kéo thả
+      div.appendChild(content);
+
+      div.onclick = (e) => {
+        if (e.target.closest('.node-controls') || e.target.closest('.drag-handle')) return;
+        
+        if (item.type === 'sub') {
+          historyStack.push(currentTitle);
+          openSubPage(name);
+        } else if (item.type === 'link') {
+          try {
+            window.open(item.content, '_blank');
+          } catch (error) {
+            console.error('Lỗi khi mở liên kết:', error);
+            alert('Không thể mở liên kết: ' + item.content);
+          }
+        } else if (item.type === 'text') {
+          showNotePreview(name);
+        }
+      };
+
+      const controls = document.createElement('div');
+      controls.className = 'node-controls';
+
+      const editBtn = document.createElement('button');
+      editBtn.innerText = 'Sửa';
+      editBtn.className = 'edit';
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
+        showDialog(true, name);
+      };
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.innerText = 'Xoá';
+      deleteBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (!confirm(`Xoá mục "${name}"?`)) return;
+        
+        // Xóa tất cả các nút con nếu là nút cha
+        if (item.type === 'sub' && Array.isArray(item.children)) {
+          // Tạo một bản sao để tránh vấn đề khi xóa trong vòng lặp
+          const childrenCopy = [...item.children];
+          for (let child of childrenCopy) {
+            deleteNodeRecursively(child);
+          }
+        }
+        
+        delete data[name];
+        
+        // Xóa tham chiếu từ các nút cha
+        for (let key in data) {
+          if (data[key].type === 'sub' && Array.isArray(data[key].children)) {
+            data[key].children = data[key].children.filter(n => n !== name);
+          }
+        }
+        
+        saveData();
+        renderCurrentView();
+      };
+
+      controls.appendChild(editBtn);
+      controls.appendChild(deleteBtn);
+      div.appendChild(controls);
+      return div;
+    }
+
+    // Xóa nút đệ quy
+    function deleteNodeRecursively(nodeName) {
+      if (!data[nodeName]) return;
+      
+      if (data[nodeName].type === 'sub' && Array.isArray(data[nodeName].children)) {
+        const childrenCopy = [...data[nodeName].children];
+        for (let child of childrenCopy) {
+          deleteNodeRecursively(child);
+        }
+      }
+      
+      delete data[nodeName];
+    }
+
+    // Tạo nút thêm mới
+    function createAddButton() {
+      const addDiv = document.createElement('div');
+      addDiv.className = 'node add-node-button';
+      addDiv.innerHTML = '<div>＋<br>Thêm mục mới</div>';
+      addDiv.onclick = () => showDialog(false);
+      return addDiv;
+    }
+
+    // Render trang chính
+    function renderMain() {
+      const container = document.getElementById('mainContainer');
+      container.innerHTML = '';
+      
+      // Tìm tất cả các nút gốc (không có nút cha)
+      const rootNodes = [];
+      for (let key in data) {
+        let hasParent = false;
+        for (let parentKey in data) {
+          if (data[parentKey].type === 'sub' && Array.isArray(data[parentKey].children) && 
+              data[parentKey].children.includes(key)) {
+            hasParent = true;
+            break;
+          }
+        }
+        if (!hasParent && data[key].type === 'sub') {
+          rootNodes.push(key);
+        }
+      }
+      
+      // Nếu không có nút gốc nào, tạo một nút mặc định
+      if (rootNodes.length === 0) {
+        data['Mục gốc'] = { type: 'sub', children: [] };
+        rootNodes.push('Mục gốc');
+        saveData();
+      }
+      
+      // Hiển thị các nút gốc
+      rootNodes.forEach(key => {
+        container.appendChild(createNodeElement(key));
+      });
+      
+      container.appendChild(createAddButton());
+      
+      // Khởi tạo kéo thả
+      initSortable(container);
+    }
+
+    // Render trang con
+    function renderSub(title) {
+      if (!data[title] || data[title].type !== 'sub') {
+        console.error('Không thể hiển thị mục không tồn tại hoặc không phải mục con:', title);
+        goHome();
+        return;
+      }
+      
+      const content = document.getElementById('subContent');
+      content.innerHTML = '';
+      
+      if (!Array.isArray(data[title].children)) {
+        data[title].children = [];
+        saveData();
+      }
+      
+      const children = data[title].children;
+      
+      if (children.length === 0) {
+        const emptyMessage = document.createElement('p');
+        emptyMessage.innerText = 'Chưa có mục nào. Hãy thêm mục mới!';
+        content.appendChild(emptyMessage);
+      } else {
+        // Kiểm tra và lọc các nút con không tồn tại
+        const validChildren = children.filter(child => data[child]);
+        if (validChildren.length !== children.length) {
+          data[title].children = validChildren;
+          saveData();
+        }
+        
+        validChildren.forEach(child => {
+          content.appendChild(createNodeElement(child, title));
+        });
+      }
+      
+      content.appendChild(createAddButton());
+      
+      // Khởi tạo kéo thả
+      initSortable(content);
+    }
+
+    // Khởi tạo Sortable.js cho kéo thả
+    function initSortable(container) {
+      if (!container) return;
+      
+      new Sortable(container, {
+        animation: 150,
+        handle: '.drag-handle',
+        draggable: '.node:not(.add-node-button)',
+        ghostClass: 'drop-zone',
+        dragClass: 'dragging',
+        onEnd: function(evt) {
+          const nodeName = evt.item.getAttribute('data-name');
+          
+          if (!nodeName || !data[nodeName]) return;
+          
+          // Nếu kéo thả trong cùng một container
+          if (currentTitle) {
+            // Cập nhật thứ tự trong mục cha
+            const children = Array.from(container.querySelectorAll('.node:not(.add-node-button)'))
+              .map(node => node.getAttribute('data-name'))
+              .filter(name => name && data[name]);
+            
+            data[currentTitle].children = children;
+          } else {
+            // Trường hợp kéo thả trong trang chính
+            // Cập nhật danh sách các nút gốc nếu cần
+          }
+          
+          saveData();
+        }
+      });
+    }
+
+    // Render view hiện tại
+    function renderCurrentView() {
+      if (!currentTitle) {
+        renderMain();
+      } else {
+        if (!data[currentTitle]) {
+          console.error('Mục không tồn tại:', currentTitle);
+          goHome();
+          return;
+        }
+        document.getElementById('subTitle').innerText = currentTitle;
+        renderSub(currentTitle);
+      }
+    }
+
+    // Mở trang con
+    function openSubPage(title) {
+      if (!data[title]) {
+        console.error('Không thể mở mục không tồn tại:', title);
+        return;
+      }
+      
+      currentTitle = title;
+      document.getElementById('mainView').classList.add('hidden');
+      document.getElementById('subView').classList.remove('hidden');
+      renderSub(title);
+      document.getElementById('subTitle').innerText = title;
+    }
+
+    // Quay lại
+    function goBack() {
+      if (historyStack.length > 0) {
+        const previous = historyStack.pop();
+        if (previous && data[previous]) {
+          openSubPage(previous);
+        } else {
+          // Nếu mục trước đó không tồn tại
+          goHome();
+        }
+      } else {
+        goHome();
+      }
+    }
+
+    // Về trang chủ
+    function goHome() {
+      historyStack = [];
+      currentTitle = '';
+      document.getElementById('subView').classList.add('hidden');
+      document.getElementById('mainView').classList.remove('hidden');
+      renderMain();
+    }
+
+    // Chuyển đổi chủ đề sáng/tối
+    function toggleTheme() {
+      if (currentTheme === 'light') {
+        document.body.classList.add('dark-theme');
+        currentTheme = 'dark';
+        localStorage.setItem('knowledgeTreeTheme', 'dark');
+      } else {
+        document.body.classList.remove('dark-theme');
+        currentTheme = 'light';
+        localStorage.setItem('knowledgeTreeTheme', 'light');
+      }
+      
+      // Cập nhật giao diện của TinyMCE nếu đang mở
+      if (editor) {
+        const content = editor.getContent();
+        editor.remove();
+        initTinyMCE('#newNodeContent', content);
+      }
+    }
+
+    // Đăng ký sự kiện thay đổi loại nút
+    document.getElementById('newNodeType').addEventListener('change', function() {
+      updateDialogFields(this.value);
+    });
+
+    // Đăng ký sự kiện chuyển đổi chủ đề
+    document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+
+
+    // Khởi tạo ứng dụng
+    function initApp() {
+      try {
+        // Tải chủ đề
+        const savedTheme = localStorage.getItem('knowledgeTreeTheme');
+        if (savedTheme === 'dark') {
+          document.body.classList.add('dark-theme');
+          currentTheme = 'dark';
+        }
+        
+        // Tải dữ liệu
+        loadData();
+        renderMain();
+      } catch (error) {
+        console.error('Lỗi khởi tạo ứng dụng:', error);
+        alert('Đã xảy ra lỗi khi khởi tạo ứng dụng. Dữ liệu sẽ được thiết lập lại.');
+        resetToDefaultData();
+        renderMain();
+      }
+    }
+
+    // Bắt đầu ứng dụng khi trang đã tải xong
+    document.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
