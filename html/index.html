@@ -8,6 +8,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.6.2/tinymce.min.js"></script>
   <!-- Thêm thư viện Sortable.js cho drag & drop -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+  <!-- Thêm thư viện LZString để nén dữ liệu URL -->
+  <script src="https://cdn.jsdelivr.net/npm/lz-string@1.4.4/libs/lz-string.min.js"></script>
   <style>
     :root {
       --bg-color: #f0f2f5;
@@ -401,11 +403,12 @@ function saveData() {
       source: 'local'
     };
     
-    localStorage.setItem('knowledgeTree', JSON.stringify(metaData));
-    lastSyncSource = 'local';
+    localStorage.setItem('knowledgeTree_public', JSON.stringify(metaData));
     lastSyncTime = metaData.lastModified;
+    lastSyncSource = 'local';
     
     checkStorageSize(); // Kiểm tra kích thước sau khi lưu
+    updateStorageStatus(); // Cập nhật trạng thái lưu trữ
   } catch (error) {
     console.error('Lỗi khi lưu dữ liệu:', error);
     if (error.name === 'QuotaExceededError') {
@@ -414,15 +417,12 @@ function saveData() {
       alert('Không thể lưu dữ liệu. Vui lòng thử lại.');
     }
   }
-  
-  // Cập nhật trạng thái đồng bộ trong giao diện
-  updateSyncStatus();
 }
 
     // Tải dữ liệu
 function loadData() {
   try {
-    const saved = localStorage.getItem('knowledgeTree');
+    const saved = localStorage.getItem('knowledgeTree_public');
     if (saved) {
       let parsedData;
       try {
@@ -1022,871 +1022,501 @@ function loadData() {
     // Đăng ký sự kiện chuyển đổi chủ đề
     document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 
-    // Cấu hình Microsoft Authentication
-const msalConfig = {
-  auth: {
-    clientId: 'a8bd8006-9ec3-4d14-a4a1-86ef79a8f226', // Thay bằng Application ID từ Azure Portal
-    authority: 'https://login.microsoftonline.com/common',
-    redirectUri: 'http://localhost:5500', // URL hiện tại của ứng dụng
-  },
-  cache: {
-    cacheLocation: 'localStorage',
-    storeAuthStateInCookie: false
-  }
-};
-
-// Phạm vi quyền truy cập OneDrive
-const scopes = [
-  'files.readwrite',
-  'user.read'
-];
-
-let msalInstance = null;
-let account = null;
-
-// Khởi tạo MSAL
-function initMSAL() {
-  try {
-    // Import thư viện MSAL
-    const script = document.createElement('script');
-    script.src = 'https://alcdn.msauth.net/browser/2.30.0/js/msal-browser.min.js';
-    script.onload = () => {
-      msalInstance = new msal.PublicClientApplication(msalConfig);
-      
-      // Kiểm tra nếu người dùng đã đăng nhập
-      const currentAccounts = msalInstance.getAllAccounts();
-      if (currentAccounts.length > 0) {
-        account = currentAccounts[0];
-        updateOneDriveButtons(true);
-      } else {
-        updateOneDriveButtons(false);
-      }
-    };
-    document.head.appendChild(script);
-  } catch (error) {
-    console.error('Lỗi khởi tạo MSAL:', error);
-  }
-}
-
-// Đăng nhập vào Microsoft
-async function signInToMicrosoft() {
-  if (!msalInstance) {
-    alert('Đang tải thư viện Microsoft Authentication, vui lòng thử lại sau vài giây');
-    initMSAL();
-    return;
-  }
-  
-  try {
-    const loginResponse = await msalInstance.loginPopup({
-      scopes: scopes,
-      prompt: 'select_account'
-    });
-    
-    account = loginResponse.account;
-    updateOneDriveButtons(true);
-  } catch (error) {
-    console.error('Lỗi đăng nhập:', error);
-    alert('Không thể đăng nhập: ' + error);
-  }
-}
-
-// Đăng xuất
-async function signOutOfMicrosoft() {
-  if (!msalInstance) return;
-  
-  try {
-    await msalInstance.logoutPopup();
-    account = null;
-    updateOneDriveButtons(false);
-  } catch (error) {
-    console.error('Lỗi đăng xuất:', error);
-  }
-}
-
-// Lấy token truy cập
-async function getAccessToken() {
-  if (!msalInstance || !account) {
-    throw new Error('Chưa đăng nhập');
-  }
-  
-  try {
-    const silentRequest = {
-      scopes: scopes,
-      account: account,
-      forceRefresh: false
-    };
-    
-    const silentResult = await msalInstance.acquireTokenSilent(silentRequest);
-    return silentResult.accessToken;
-  } catch (error) {
-    console.error('Lỗi lấy token:', error);
-    
-    // Nếu token hết hạn, thử lấy lại
-    if (error instanceof msal.InteractionRequiredAuthError) {
-      const interactionResult = await msalInstance.acquireTokenPopup(silentRequest);
-      return interactionResult.accessToken;
-    }
-    
-    throw error;
-  }
-}
-
-// Lưu dữ liệu lên OneDrive
-// Cải thiện hàm lưu dữ liệu lên OneDrive
-async function saveToOneDrive() {
-  try {
-    if (!account) {
-      await signInToMicrosoft();
-      if (!account) return; // Người dùng hủy đăng nhập
-    }
-    
-    const accessToken = await getAccessToken();
-    
-    // Chuẩn bị dữ liệu với metadata
-    const metaData = {
-      data: data,
-      version: dataVersion++,
-      lastModified: Date.now(),
-      source: 'onedrive'
-    };
-    
-    const dataStr = JSON.stringify(metaData);
-    const fileName = 'cay-kien-thuc-' + new Date().toISOString().slice(0, 10) + '.json';
-    
-    // Hiển thị trạng thái
-    showStatus('Đang lưu lên OneDrive...');
-    
-    // Tạo upload session cho file lớn
-    const createSessionResponse = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/root:/' + fileName + ':/createUploadSession',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer ' + accessToken,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          "@microsoft.graph.conflictBehavior": "replace"
-        })
-      }
-    );
-    
-    if (!createSessionResponse.ok) {
-      throw new Error('Không thể tạo phiên tải lên: ' + await createSessionResponse.text());
-    }
-    
-    const sessionData = await createSessionResponse.json();
-    const uploadUrl = sessionData.uploadUrl;
-    
-    // Upload file
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: dataStr
-    });
-    
-    if (!uploadResponse.ok) {
-      throw new Error('Lỗi khi tải lên: ' + await uploadResponse.text());
-    }
-    
-    // Cập nhật thời gian đồng bộ
-    lastSyncTime = metaData.lastModified;
-    lastSyncSource = 'onedrive';
-    
-    // Lưu lại trạng thái đồng bộ vào localStorage
-    localStorage.setItem('lastSync', JSON.stringify({
-      time: lastSyncTime,
-      source: lastSyncSource,
-      version: metaData.version
-    }));
-    
-    updateSyncStatus();
-    hideStatus();
-    alert('Đã lưu dữ liệu lên OneDrive thành công!');
-  } catch (error) {
-    console.error('Lỗi lưu OneDrive:', error);
-    hideStatus();
-    alert('Không thể lưu lên OneDrive: ' + error.message);
-  }
-}
-
-// Tải dữ liệu từ OneDrive
-// Cải thiện hàm tải dữ liệu từ OneDrive
-async function loadFromOneDrive(autoSync = false) {
-  try {
-    if (!account) {
-      await signInToMicrosoft();
-      if (!account) return; // Người dùng hủy đăng nhập
-    }
-    
-    const accessToken = await getAccessToken();
-    
-    // Hiển thị trạng thái
-    showStatus('Đang tải danh sách tệp từ OneDrive...');
-    
-    // Lấy danh sách file JSON
-    const filesResponse = await fetch(
-      'https://graph.microsoft.com/v1.0/me/drive/root/search(q=\'.json\')?select=name,id,lastModifiedDateTime',
-      {
-        headers: {
-          'Authorization': 'Bearer ' + accessToken
+    // Gọi hàm này trong initApp() để khởi tạo OneDrive
+    function initApp() {
+      try {
+        // Tải chủ đề
+        const savedTheme = localStorage.getItem('knowledgeTreeTheme');
+        if (savedTheme === 'dark') {
+          document.body.classList.add('dark-theme');
+          currentTheme = 'dark';
         }
-      }
-    );
-    
-    if (!filesResponse.ok) {
-      throw new Error('Không thể lấy danh sách tệp: ' + await filesResponse.text());
-    }
-    
-    const filesData = await filesResponse.json();
-    hideStatus();
-    
-    // Lọc chỉ các tệp cây kiến thức
-    const knowledgeFiles = filesData.value.filter(file => 
-      file.name.toLowerCase().includes('cay-kien-thuc') || 
-      file.name.toLowerCase().includes('knowledge')
-    );
-    
-    if (knowledgeFiles.length === 0) {
-      if (!autoSync) {
-        alert('Không tìm thấy tệp dữ liệu cây kiến thức nào trên OneDrive của bạn');
-      }
-      return false;
-    }
-    
-    // Sắp xếp theo thời gian sửa đổi mới nhất
-    knowledgeFiles.sort((a, b) => 
-      new Date(b.lastModifiedDateTime) - new Date(a.lastModifiedDateTime)
-    );
-    
-    // Nếu là đồng bộ tự động, chọn file mới nhất
-    if (autoSync) {
-      const latestFile = knowledgeFiles[0];
-      return await loadOneDriveFile(latestFile.id, true);
-    } else {
-      // Hiển thị dialog chọn file
-      showFileSelectionDialog(knowledgeFiles, async (fileId) => {
-        await loadOneDriveFile(fileId, false);
-      });
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Lỗi tải từ OneDrive:', error);
-    hideStatus();
-    if (!autoSync) {
-      alert('Không thể tải từ OneDrive: ' + error.message);
-    }
-    return false;
-  }
-}
-
-// Hàm tải file cụ thể từ OneDrive
-async function loadOneDriveFile(fileId, autoSync = false) {
-  try {
-    showStatus('Đang tải dữ liệu...');
-    
-    const accessToken = await getAccessToken();
-    
-    // Tải nội dung file
-    const fileResponse = await fetch(
-      `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/content`,
-      {
-        headers: {
-          'Authorization': 'Bearer ' + accessToken
-        }
-      }
-    );
-    
-    if (!fileResponse.ok) {
-      throw new Error('Không thể tải tệp: ' + await fileResponse.text());
-    }
-    
-    const fileContent = await fileResponse.text();
-    let parsedData;
-    
-    try {
-      parsedData = JSON.parse(fileContent);
-    } catch (error) {
-      throw new Error('Dữ liệu không hợp lệ hoặc bị hỏng');
-    }
-    
-    // Kiểm tra định dạng dữ liệu
-    let oneDriveData, oneDriveVersion, oneDriveTimestamp;
-    
-    if (parsedData.data && parsedData.version !== undefined && parsedData.lastModified) {
-      // Định dạng mới có metadata
-      oneDriveData = parsedData.data;
-      oneDriveVersion = parsedData.version;
-      oneDriveTimestamp = parsedData.lastModified;
-    } else {
-      // Định dạng cũ - chuyển đổi
-      oneDriveData = parsedData;
-      oneDriveVersion = 1;
-      oneDriveTimestamp = Date.now();
-    }
-    
-    // Quyết định xử lý xung đột
-    if (autoSync) {
-      // Nếu tự động đồng bộ, so sánh thời gian
-      if (oneDriveTimestamp > lastSyncTime) {
-        // OneDrive có dữ liệu mới hơn
-        data = oneDriveData;
-        dataVersion = oneDriveVersion;
-        lastSyncTime = oneDriveTimestamp;
-        lastSyncSource = 'onedrive';
         
-        // Lưu vào localStorage không dùng hàm saveData() để tránh tăng version
+        // Kiểm tra xem có dữ liệu từ URL không
+        const hasUrlData = loadDataFromURL();
+        
+        // Nếu không có dữ liệu từ URL, tải dữ liệu từ localStorage
+        if (!hasUrlData) {
+          loadData();
+          renderMain();
+        }
+        
+        // Thêm nút xuất/nhập dữ liệu
+        addDataManagementButtons();
+        
+      } catch (error) {
+        console.error('Lỗi khởi tạo ứng dụng:', error);
+        alert('Đã xảy ra lỗi khi khởi tạo ứng dụng. Dữ liệu sẽ được thiết lập lại.');
+        resetToDefaultData();
+        renderMain();
+        addDataManagementButtons();
+      }
+    }
+
+    // Thêm nút quản lý dữ liệu (xuất/nhập)
+    function addDataManagementButtons() {
+      const mainControls = document.querySelector('#mainView .controls');
+      const subControls = document.querySelector('#subView .controls');
+      
+      // Tạo các nút quản lý dữ liệu nếu chưa có
+      if (!document.querySelector('#mainView .controls')) {
+        const controls = document.createElement('div');
+        controls.className = 'controls';
+        document.getElementById('mainView').insertBefore(controls, document.getElementById('mainView').firstChild);
+      }
+      
+      // Tạo các nút
+      const exportBtn = document.createElement('button');
+      exportBtn.innerHTML = '💾 Xuất dữ liệu';
+      exportBtn.onclick = exportData;
+      exportBtn.setAttribute('data-action', 'export');
+      
+      const importBtn = document.createElement('button');
+      importBtn.innerHTML = '📂 Nhập dữ liệu';
+      importBtn.onclick = importData;
+      importBtn.setAttribute('data-action', 'import');
+      
+      const shareBtn = document.createElement('button'); 
+      shareBtn.innerHTML = '🔗 Chia sẻ URL';
+      shareBtn.onclick = shareDataViaURL;
+      shareBtn.setAttribute('data-action', 'share');
+      
+      // Thêm vào trang chính
+      if (mainControls) {
+        // Xóa nút cũ nếu có
+        const oldExportBtn = mainControls.querySelector('button[data-action="export"]');
+        const oldImportBtn = mainControls.querySelector('button[data-action="import"]');
+        const oldShareBtn = mainControls.querySelector('button[data-action="share"]');
+        
+        if (oldExportBtn) mainControls.removeChild(oldExportBtn);
+        if (oldImportBtn) mainControls.removeChild(oldImportBtn);
+        if (oldShareBtn) mainControls.removeChild(oldShareBtn);
+        
+        mainControls.appendChild(exportBtn);
+        mainControls.appendChild(importBtn);
+        mainControls.appendChild(shareBtn);
+      }
+      
+      // Thêm vào trang con
+      if (subControls) {
+        // Xóa nút cũ nếu có
+        const oldExportBtn = subControls.querySelector('button[data-action="export"]');
+        const oldImportBtn = subControls.querySelector('button[data-action="import"]');
+        const oldShareBtn = subControls.querySelector('button[data-action="share"]');
+        
+        if (oldExportBtn) subControls.removeChild(oldExportBtn);
+        if (oldImportBtn) subControls.removeChild(oldImportBtn);
+        if (oldShareBtn) subControls.removeChild(oldShareBtn);
+        
+        const exportBtnClone = exportBtn.cloneNode(true);
+        exportBtnClone.onclick = exportData;
+        exportBtnClone.setAttribute('data-action', 'export');
+        
+        const importBtnClone = importBtn.cloneNode(true);
+        importBtnClone.onclick = importData;
+        importBtnClone.setAttribute('data-action', 'import');
+        
+        const shareBtnClone = shareBtn.cloneNode(true);
+        shareBtnClone.onclick = shareDataViaURL;
+        shareBtnClone.setAttribute('data-action', 'share');
+        
+        subControls.appendChild(exportBtnClone);
+        subControls.appendChild(importBtnClone);
+        subControls.appendChild(shareBtnClone);
+      }
+      
+      // Hiển thị trạng thái lưu trữ
+      updateStorageStatus();
+    }
+
+    // Hiển thị trạng thái lưu trữ cục bộ
+    function updateStorageStatus() {
+      // Xóa indicator cũ nếu có
+      let storageIndicator = document.getElementById('storage-indicator');
+      if (!storageIndicator) {
+        storageIndicator = document.createElement('div');
+        storageIndicator.id = 'storage-indicator';
+        storageIndicator.style.position = 'fixed';
+        storageIndicator.style.bottom = '20px';
+        storageIndicator.style.left = '20px';
+        storageIndicator.style.padding = '5px 10px';
+        storageIndicator.style.backgroundColor = '#28a745';
+        storageIndicator.style.color = 'white';
+        storageIndicator.style.borderRadius = '5px';
+        storageIndicator.style.fontSize = '12px';
+        storageIndicator.style.opacity = '0.8';
+        document.body.appendChild(storageIndicator);
+      }
+      
+      // Kiểm tra kích thước dữ liệu
+      const dataSize = JSON.stringify(data).length;
+      const storageSizeMB = (dataSize / (1024 * 1024)).toFixed(2);
+      
+      if (lastSyncTime === 0) {
+        storageIndicator.innerHTML = '⚠️ Chưa lưu dữ liệu';
+        storageIndicator.style.backgroundColor = '#ffc107';
+        storageIndicator.style.color = 'black';
+      } else {
+        const timeDiff = Math.floor((Date.now() - lastSyncTime) / 1000 / 60); // Số phút từ lần lưu cuối
+        let statusText, statusColor;
+        
+        if (timeDiff < 5) {
+          statusText = `✅ Đã lưu (${storageSizeMB} MB)`;
+          statusColor = '#28a745';
+        } else if (timeDiff < 60) {
+          statusText = `⏱️ Lưu ${timeDiff} phút trước (${storageSizeMB} MB)`;
+          statusColor = '#17a2b8';
+        } else {
+          const hours = Math.floor(timeDiff / 60);
+          statusText = `⚠️ Lưu ${hours} giờ trước (${storageSizeMB} MB)`;
+          statusColor = '#ffc107';
+        }
+        
+        storageIndicator.innerHTML = statusText;
+        storageIndicator.style.backgroundColor = statusColor;
+        storageIndicator.style.color = (statusColor === '#ffc107') ? 'black' : 'white';
+      }
+    }
+
+    // Chia sẻ dữ liệu qua URL
+    function shareDataViaURL() {
+      try {
+        // Chuẩn bị dữ liệu với metadata
         const metaData = {
           data: data,
           version: dataVersion,
-          lastModified: lastSyncTime,
-          source: lastSyncSource
+          lastModified: Date.now(),
+          source: 'url_share'
         };
-        localStorage.setItem('knowledgeTree', JSON.stringify(metaData));
         
-        updateSyncStatus();
-        goHome();
-        return true;
-      } else {
-        // Local có dữ liệu mới hơn hoặc bằng, không làm gì
-        return false;
-      }
-    } else {
-      // Nếu người dùng chọn thủ công, hiển thị xác nhận
-      const confirmMessage = (oneDriveTimestamp > lastSyncTime) ? 
-        'Dữ liệu trên OneDrive mới hơn dữ liệu hiện tại. Bạn có muốn tải dữ liệu từ OneDrive?' :
-        'Dữ liệu hiện tại có thể mới hơn dữ liệu trên OneDrive. Bạn vẫn muốn tải dữ liệu từ OneDrive?';
-      
-      if (confirm(confirmMessage)) {
-        data = oneDriveData;
-        dataVersion = oneDriveVersion;
-        lastSyncTime = oneDriveTimestamp;
-        lastSyncSource = 'onedrive';
+        // Nén dữ liệu
+        const compressedData = LZString.compressToEncodedURIComponent(
+          JSON.stringify(metaData)
+        );
         
-        // Lưu vào localStorage
-        const metaData = {
-          data: data,
-          version: dataVersion,
-          lastModified: lastSyncTime,
-          source: lastSyncSource
-        };
-        localStorage.setItem('knowledgeTree', JSON.stringify(metaData));
+        // Tạo URL chia sẻ
+        const shareUrl = `${window.location.origin}${window.location.pathname}?data=${compressedData}`;
         
-        updateSyncStatus();
-        goHome();
-        alert('Tải dữ liệu từ OneDrive thành công!');
-        return true;
+        // Kiểm tra độ dài URL
+        if (shareUrl.length > 2000) {
+          showURLTooLargeDialog(shareUrl);
+        } else {
+          showShareURLDialog(shareUrl);
+        }
+      } catch (error) {
+        console.error('Lỗi khi tạo URL chia sẻ:', error);
+        alert('Không thể tạo URL chia sẻ: ' + error.message);
       }
     }
-    
-    hideStatus();
-    return false;
-  } catch (error) {
-    console.error('Lỗi tải file OneDrive:', error);
-    hideStatus();
-    if (!autoSync) {
-      alert('Không thể tải tệp: ' + error.message);
-    }
-    return false;
-  }
-}
 
-// Thêm chức năng đồng bộ hóa tự động
-async function syncWithOneDrive() {
-  if (!account) {
-    showStatus('Đăng nhập để đồng bộ...');
-    await signInToMicrosoft();
-    if (!account) {
-      hideStatus();
-      return;
-    }
-  }
-  
-  showStatus('Đang đồng bộ hóa...');
-  
-  try {
-    // Kiểm tra xem có file trên OneDrive không
-    const hasLoadedFromOneDrive = await loadFromOneDrive(true);
-    
-    // Nếu không tải được từ OneDrive hoặc dữ liệu local mới hơn, lưu lên OneDrive
-    if (!hasLoadedFromOneDrive) {
-      // Thay vì gọi saveToOneDrive, thực hiện lưu đơn giản hơn cho đồng bộ tự động
-      const accessToken = await getAccessToken();
+    // Hiển thị dialog khi URL quá dài
+    function showURLTooLargeDialog(url) {
+      // Tạo dialog
+      const dialog = document.createElement('div');
+      dialog.className = 'dialog';
+      dialog.style.zIndex = '2000';
       
-      const metaData = {
-        data: data,
-        version: dataVersion++,
-        lastModified: Date.now(),
-        source: 'onedrive'
+      dialog.innerHTML = `
+        <h3>URL quá dài</h3>
+        <p>URL chia sẻ có độ dài ${url.length} ký tự, có thể gây lỗi ở một số trình duyệt.</p>
+        <p>Khuyến nghị:</p>
+        <ul style="text-align: left; margin-bottom: 20px;">
+          <li>Sử dụng dịch vụ rút gọn URL như bit.ly, tinyurl.com</li>
+          <li>Xuất dữ liệu thành file và chia sẻ qua Google Drive, Dropbox...</li>
+        </ul>
+        <div class="dialog-actions">
+          <button id="copyUrlBtn">Sao chép URL dài</button>
+          <button id="closeDialogBtn">Đóng</button>
+        </div>
+      `;
+      
+      document.body.appendChild(dialog);
+      
+      // Xử lý sự kiện nút
+      document.getElementById('copyUrlBtn').onclick = function() {
+        navigator.clipboard.writeText(url).then(() => {
+          alert('Đã sao chép URL vào clipboard!');
+        });
       };
       
-      const dataStr = JSON.stringify(metaData);
-      const fileName = 'cay-kien-thuc-auto-sync.json';
+      document.getElementById('closeDialogBtn').onclick = function() {
+        document.body.removeChild(dialog);
+      };
+    }
+
+    // Hiển thị dialog chia sẻ URL
+    function showShareURLDialog(url) {
+      // Tạo dialog
+      const dialog = document.createElement('div');
+      dialog.className = 'dialog';
+      dialog.style.zIndex = '2000';
       
-      // Tạo upload session
-      const createSessionResponse = await fetch(
-        'https://graph.microsoft.com/v1.0/me/drive/root:/' + fileName + ':/createUploadSession',
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + accessToken,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            "@microsoft.graph.conflictBehavior": "replace"
-          })
+      dialog.innerHTML = `
+        <h3>Chia sẻ qua URL</h3>
+        <p>Sao chép URL bên dưới để chia sẻ dữ liệu:</p>
+        <div style="margin: 15px 0;">
+          <input type="text" id="shareUrlInput" 
+            value="${url}" 
+            style="width: 100%; padding: 10px; font-size: 14px; word-break: break-all;" readonly />
+        </div>
+        <div class="dialog-actions">
+          <button id="copyShareUrlBtn">Sao chép URL</button>
+          <button id="closeShareDialogBtn">Đóng</button>
+        </div>
+      `;
+      
+      document.body.appendChild(dialog);
+      
+      // Xử lý sự kiện nút
+      document.getElementById('copyShareUrlBtn').onclick = function() {
+        const urlInput = document.getElementById('shareUrlInput');
+        urlInput.select();
+        navigator.clipboard.writeText(urlInput.value).then(() => {
+          alert('Đã sao chép URL vào clipboard!');
+        });
+      };
+      
+      document.getElementById('closeShareDialogBtn').onclick = function() {
+        document.body.removeChild(dialog);
+      };
+    }
+
+    // Kiểm tra và tải dữ liệu từ URL
+    function loadDataFromURL() {
+      try {
+        // Lấy tham số URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const compressedData = urlParams.get('data');
+        
+        if (!compressedData) return false;
+        
+        // Giải nén dữ liệu
+        const decompressedData = LZString.decompressFromEncodedURIComponent(compressedData);
+        
+        if (!decompressedData) {
+          console.error('Dữ liệu URL không hợp lệ hoặc bị hỏng');
+          return false;
         }
-      );
-      
-      if (!createSessionResponse.ok) {
-        throw new Error('Không thể tạo phiên tải lên');
-      }
-      
-      const sessionData = await createSessionResponse.json();
-      const uploadUrl = sessionData.uploadUrl;
-      
-      // Upload file
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: dataStr
-      });
-      
-      if (!uploadResponse.ok) {
-        throw new Error('Lỗi khi tải lên');
-      }
-      
-      lastSyncTime = metaData.lastModified;
-      lastSyncSource = 'onedrive';
-      
-      // Lưu lại trạng thái đồng bộ vào localStorage
-      localStorage.setItem('lastSync', JSON.stringify({
-        time: lastSyncTime,
-        source: lastSyncSource,
-        version: metaData.version
-      }));
-    }
-    
-    updateSyncStatus();
-    hideStatus();
-    return true;
-  } catch (error) {
-    console.error('Lỗi đồng bộ:', error);
-    hideStatus();
-    return false;
-  }
-}
-
-// Hiển thị trạng thái đồng bộ
-function updateSyncStatus() {
-  // Xóa indicator cũ nếu có
-  let syncIndicator = document.getElementById('sync-indicator');
-  if (!syncIndicator) {
-    syncIndicator = document.createElement('div');
-    syncIndicator.id = 'sync-indicator';
-    syncIndicator.style.position = 'fixed';
-    syncIndicator.style.bottom = '20px';
-    syncIndicator.style.left = '20px';
-    syncIndicator.style.padding = '5px 10px';
-    syncIndicator.style.backgroundColor = 'var(--button-bg)';
-    syncIndicator.style.color = 'white';
-    syncIndicator.style.borderRadius = '5px';
-    syncIndicator.style.fontSize = '12px';
-    syncIndicator.style.opacity = '0.8';
-    syncIndicator.style.cursor = 'pointer';
-    syncIndicator.title = 'Nhấp để đồng bộ hóa';
-    syncIndicator.onclick = syncWithOneDrive;
-    document.body.appendChild(syncIndicator);
-  }
-  
-  if (lastSyncTime === 0) {
-    syncIndicator.innerHTML = '⚠️ Chưa đồng bộ';
-    syncIndicator.style.backgroundColor = '#ffc107';
-    syncIndicator.style.color = 'black';
-  } else {
-    const timeDiff = Math.floor((Date.now() - lastSyncTime) / 1000 / 60); // Số phút từ lần đồng bộ cuối
-    let syncText, syncColor;
-    
-    if (timeDiff < 5) {
-      syncText = '✅ Đã đồng bộ';
-      syncColor = '#28a745';
-    } else if (timeDiff < 60) {
-      syncText = '⏱️ Đồng bộ ' + timeDiff + ' phút trước';
-      syncColor = '#17a2b8';
-    } else {
-      const hours = Math.floor(timeDiff / 60);
-      syncText = '⚠️ Đồng bộ ' + hours + ' giờ trước';
-      syncColor = '#ffc107';
-    }
-    
-    syncIndicator.innerHTML = syncText;
-    syncIndicator.style.backgroundColor = syncColor;
-    syncIndicator.style.color = (syncColor === '#ffc107') ? 'black' : 'white';
-  }
-}
-
-// Thêm nút đồng bộ vào thanh controls
-function addSyncButton() {
-  const mainControls = document.querySelector('#mainView .controls');
-  const subControls = document.querySelector('#subView .controls');
-  
-  if (mainControls) {
-    // Xóa nút cũ nếu có
-    const oldSyncBtn = mainControls.querySelector('button[data-sync="auto"]');
-    if (oldSyncBtn) mainControls.removeChild(oldSyncBtn);
-    
-    // Thêm nút mới
-    const syncBtn = document.createElement('button');
-    syncBtn.innerHTML = '🔄 Đồng bộ';
-    syncBtn.setAttribute('data-sync', 'auto');
-    syncBtn.onclick = syncWithOneDrive;
-    mainControls.appendChild(syncBtn);
-  }
-  
-  if (subControls) {
-    // Xóa nút cũ nếu có
-    const oldSyncBtn = subControls.querySelector('button[data-sync="auto"]');
-    if (oldSyncBtn) subControls.removeChild(oldSyncBtn);
-    
-    // Thêm nút mới
-    const syncBtn = document.createElement('button');
-    syncBtn.innerHTML = '🔄 Đồng bộ';
-    syncBtn.setAttribute('data-sync', 'auto');
-    syncBtn.onclick = syncWithOneDrive;
-    subControls.appendChild(syncBtn);
-  }
-}
-
-// Thiết lập đồng bộ tự động theo khoảng thời gian
-function setupAutoSync() {
-  // Đồng bộ khi có thay đổi trong editor
-  if (editor) {
-    editor.on('change', _.debounce(() => {
-      if (account) {
-        syncWithOneDrive();
-      }
-    }, 10000)); // Đợi 10 giây không thay đổi thì mới đồng bộ
-  }
-  
-  // Đồng bộ định kỳ (15 phút) nếu đang đăng nhập OneDrive
-  setInterval(() => {
-    if (account) {
-      const timeSinceLastSync = Date.now() - lastSyncTime;
-      // Nếu đã hơn 15 phút kể từ lần đồng bộ cuối
-      if (timeSinceLastSync > 15 * 60 * 1000) {
-        syncWithOneDrive();
+        
+        // Parse dữ liệu
+        const importedData = JSON.parse(decompressedData);
+        
+        // Kiểm tra định dạng dữ liệu
+        if (!importedData.data) {
+          console.error('Định dạng dữ liệu không hợp lệ');
+          return false;
+        }
+        
+        // Hiển thị xác nhận
+        showURLDataConfirmDialog(importedData);
+        return true;
+      } catch (error) {
+        console.error('Lỗi khi tải dữ liệu từ URL:', error);
+        return false;
       }
     }
-  }, 5 * 60 * 1000); // Kiểm tra mỗi 5 phút
-}
 
-// Hàm tạo phiên sử dụng cho TinyMCE
-function setupAutoSave() {
-  // Tự động lưu khi người dùng dừng gõ
-  if (editor) {
-    editor.on('change', _.debounce(() => {
-      if (currentNoteBeingEdited && data[currentNoteBeingEdited]) {
-        data[currentNoteBeingEdited].content = editor.getContent();
+    // Hiển thị dialog xác nhận tải dữ liệu từ URL
+    function showURLDataConfirmDialog(importedData) {
+      // Tạo dialog
+      const dialog = document.createElement('div');
+      dialog.className = 'dialog';
+      dialog.style.zIndex = '2000';
+      
+      // Tìm thông tin cơ bản
+      const nodeCount = Object.keys(importedData.data).length;
+      const lastModified = new Date(importedData.lastModified).toLocaleString();
+      
+      dialog.innerHTML = `
+        <h3>Dữ liệu từ URL chia sẻ</h3>
+        <div style="text-align: left; margin: 15px 0;">
+          <p><strong>Số lượng nút:</strong> ${nodeCount}</p>
+          <p><strong>Cập nhật lần cuối:</strong> ${lastModified}</p>
+          <p><strong>Phiên bản:</strong> ${importedData.version || 1}</p>
+        </div>
+        <p>Bạn có muốn tải dữ liệu này không? Dữ liệu hiện tại sẽ bị thay thế.</p>
+        <div class="dialog-actions">
+          <button id="loadUrlDataBtn">Tải dữ liệu</button>
+          <button id="cancelUrlDataBtn">Hủy</button>
+        </div>
+      `;
+      
+      document.body.appendChild(dialog);
+      
+      // Xử lý sự kiện nút
+      document.getElementById('loadUrlDataBtn').onclick = function() {
+        // Cập nhật dữ liệu
+        data = importedData.data;
+        dataVersion = importedData.version || 1;
+        lastSyncTime = importedData.lastModified || Date.now();
+        lastSyncSource = 'url_share';
+        
+        // Lưu vào localStorage
         saveData();
+        
+        // Xóa tham số URL để tránh tải lại dữ liệu khi refresh
+        const newUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+        
+        // Cập nhật giao diện
+        goHome();
+        document.body.removeChild(dialog);
+        showStatus('Đã tải dữ liệu thành công!');
+        setTimeout(() => hideStatus(), 2000);
+      };
+      
+      document.getElementById('cancelUrlDataBtn').onclick = function() {
+        document.body.removeChild(dialog);
+        
+        // Xóa tham số URL
+        const newUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+      };
+    }
+
+    // Hiển thị trạng thái
+    function showStatus(message) {
+      // Kiểm tra nếu đã có status box
+      let statusBox = document.getElementById('status-box');
+      
+      if (!statusBox) {
+        statusBox = document.createElement('div');
+        statusBox.id = 'status-box';
+        statusBox.style.position = 'fixed';
+        statusBox.style.bottom = '20px';
+        statusBox.style.right = '20px';
+        statusBox.style.padding = '10px 20px';
+        statusBox.style.backgroundColor = 'var(--button-bg)';
+        statusBox.style.color = 'white';
+        statusBox.style.borderRadius = '5px';
+        statusBox.style.zIndex = '9999';
+        statusBox.style.boxShadow = '0 0 10px rgba(0,0,0,0.2)';
+        document.body.appendChild(statusBox);
       }
-    }, 2000)); // Đợi 2 giây không thay đổi thì mới lưu
-  }
-}
-
-// Cập nhật hàm initOneDriveIntegration để thêm các chức năng mới
-function initOneDriveIntegration() {
-  addOneDriveStyles();
-  
-  // Thêm CSS cho các thành phần đồng bộ
-  const style = document.createElement('style');
-  style.textContent += `
-    #sync-indicator {
-      transition: all 0.3s ease;
-      z-index: 999;
-    }
-    
-    #sync-indicator:hover {
-      opacity: 1;
-    }
-  `;
-  document.head.appendChild(style);
-  
-  // Thêm nút vào controls
-  const controls = document.createElement('div');
-  controls.className = 'controls';
-  
-  if (!document.querySelector('#mainView .controls')) {
-    document.getElementById('mainView').insertBefore(controls, document.getElementById('mainView').firstChild);
-  }
-  
-  // Khởi tạo MSAL sau khi DOM đã tải
-  setTimeout(() => {
-    initMSAL();
-    
-    // Thêm nút đồng bộ
-    addSyncButton();
-    
-    // Khởi tạo indicator trạng thái đồng bộ
-    updateSyncStatus();
-    
-    // Thiết lập đồng bộ tự động
-    setupAutoSync();
-  }, 500);
-}
-
-// Hàm debounce đơn giản nếu không có lodash
-function debounce(func, wait) {
-  let timeout;
-  return function(...args) {
-    const context = this;
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(context, args), wait);
-  };
-}
-
-// Kiểm tra xem có lodash không
-const _ = window._ || { 
-  debounce: debounce
-};
-
-// Hiển thị dialog chọn file
-function showFileSelectionDialog(files, onSelect) {
-  // Tạo dialog
-  const dialog = document.createElement('div');
-  dialog.className = 'dialog';
-  dialog.style.width = '500px';
-  
-  // Tiêu đề
-  const title = document.createElement('h3');
-  title.textContent = 'Chọn tệp từ OneDrive';
-  dialog.appendChild(title);
-  
-  // Danh sách file
-  const fileList = document.createElement('div');
-  fileList.style.maxHeight = '300px';
-  fileList.style.overflowY = 'auto';
-  fileList.style.margin = '15px 0';
-  fileList.style.border = '1px solid var(--border-color)';
-  fileList.style.borderRadius = '5px';
-  fileList.style.padding = '5px';
-  
-  files.forEach(file => {
-    const fileItem = document.createElement('div');
-    fileItem.style.padding = '10px';
-    fileItem.style.margin = '5px 0';
-    fileItem.style.borderRadius = '5px';
-    fileItem.style.backgroundColor = 'var(--card-bg)';
-    fileItem.style.cursor = 'pointer';
-    
-    // Format ngày
-    const date = new Date(file.lastModifiedDateTime);
-    const formattedDate = `${date.getDate()}/${date.getMonth()+1}/${date.getFullYear()} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
-    
-    fileItem.innerHTML = `
-      <div><strong>${file.name}</strong></div>
-      <div style="font-size: 0.8em; color: #888;">Cập nhật: ${formattedDate}</div>
-    `;
-    
-    fileItem.addEventListener('click', () => {
-      document.body.removeChild(dialog);
-      onSelect(file.id);
-    });
-    
-    fileList.appendChild(fileItem);
-  });
-  
-  dialog.appendChild(fileList);
-  
-  // Nút hủy
-  const actions = document.createElement('div');
-  actions.className = 'dialog-actions';
-  
-  const cancelBtn = document.createElement('button');
-  cancelBtn.textContent = 'Hủy';
-  cancelBtn.onclick = () => document.body.removeChild(dialog);
-  actions.appendChild(cancelBtn);
-  
-  dialog.appendChild(actions);
-  
-  // Hiển thị dialog
-  document.body.appendChild(dialog);
-}
-
-// Cập nhật nút OneDrive
-function updateOneDriveButtons(isLoggedIn) {
-  // Thêm hoặc cập nhật nút OneDrive
-  const mainControls = document.querySelector('#mainView .controls');
-  const subControls = document.querySelector('#subView .controls');
-  
-  // Tạo các nút
-  const saveBtn = document.createElement('button');
-  saveBtn.innerHTML = '☁️ Lưu lên OneDrive';
-  saveBtn.onclick = saveToOneDrive;
-  
-  const loadBtn = document.createElement('button');
-  loadBtn.innerHTML = '☁️ Tải từ OneDrive';
-  loadBtn.onclick = loadFromOneDrive;
-  
-  const loginBtn = document.createElement('button');
-  loginBtn.innerHTML = isLoggedIn ? '🔓 Đăng xuất OneDrive' : '🔑 Đăng nhập OneDrive';
-  loginBtn.onclick = isLoggedIn ? signOutOfMicrosoft : signInToMicrosoft;
-  
-  // Thêm vào trang chính
-  if (mainControls) {
-    // Xóa nút cũ nếu có
-    const oldSaveBtn = mainControls.querySelector('button[data-onedrive="save"]');
-    const oldLoadBtn = mainControls.querySelector('button[data-onedrive="load"]');
-    const oldLoginBtn = mainControls.querySelector('button[data-onedrive="login"]');
-    
-    if (oldSaveBtn) mainControls.removeChild(oldSaveBtn);
-    if (oldLoadBtn) mainControls.removeChild(oldLoadBtn);
-    if (oldLoginBtn) mainControls.removeChild(oldLoginBtn);
-    
-    // Thêm nút mới
-    if (isLoggedIn) {
-      saveBtn.setAttribute('data-onedrive', 'save');
-      loadBtn.setAttribute('data-onedrive', 'load');
-      mainControls.appendChild(saveBtn);
-      mainControls.appendChild(loadBtn);
-    }
-    
-    loginBtn.setAttribute('data-onedrive', 'login');
-    mainControls.appendChild(loginBtn);
-  }
-  
-  // Thêm vào trang con
-  if (subControls) {
-    // Xóa nút cũ nếu có
-    const oldSaveBtn = subControls.querySelector('button[data-onedrive="save"]');
-    const oldLoadBtn = subControls.querySelector('button[data-onedrive="load"]');
-    const oldLoginBtn = subControls.querySelector('button[data-onedrive="login"]');
-    
-    if (oldSaveBtn) subControls.removeChild(oldSaveBtn);
-    if (oldLoadBtn) subControls.removeChild(oldLoadBtn);
-    if (oldLoginBtn) subControls.removeChild(oldLoginBtn);
-    
-    // Thêm nút mới
-    if (isLoggedIn) {
-      const saveBtnClone = saveBtn.cloneNode(true);
-      saveBtnClone.onclick = saveToOneDrive;
-      saveBtnClone.setAttribute('data-onedrive', 'save');
       
-      const loadBtnClone = loadBtn.cloneNode(true);
-      loadBtnClone.onclick = loadFromOneDrive;
-      loadBtnClone.setAttribute('data-onedrive', 'load');
-      
-      subControls.appendChild(saveBtnClone);
-      subControls.appendChild(loadBtnClone);
+      statusBox.textContent = message;
+      statusBox.style.display = 'block';
     }
-    
-    const loginBtnClone = loginBtn.cloneNode(true);
-    loginBtnClone.onclick = isLoggedIn ? signOutOfMicrosoft : signInToMicrosoft;
-    loginBtnClone.setAttribute('data-onedrive', 'login');
-    subControls.appendChild(loginBtnClone);
-  }
-}
 
-// Hiển thị trạng thái
-function showStatus(message) {
-  // Kiểm tra nếu đã có status box
-  let statusBox = document.getElementById('status-box');
-  
-  if (!statusBox) {
-    statusBox = document.createElement('div');
-    statusBox.id = 'status-box';
-    statusBox.style.position = 'fixed';
-    statusBox.style.bottom = '20px';
-    statusBox.style.right = '20px';
-    statusBox.style.padding = '10px 20px';
-    statusBox.style.backgroundColor = 'var(--button-bg)';
-    statusBox.style.color = 'white';
-    statusBox.style.borderRadius = '5px';
-    statusBox.style.zIndex = '9999';
-    statusBox.style.boxShadow = '0 0 10px rgba(0,0,0,0.2)';
-    document.body.appendChild(statusBox);
-  }
-  
-  statusBox.textContent = message;
-  statusBox.style.display = 'block';
-}
-
-// Ẩn trạng thái
-function hideStatus() {
-  const statusBox = document.getElementById('status-box');
-  if (statusBox) {
-    statusBox.style.display = 'none';
-  }
-}
-
-// Thêm CSS cho các thành phần mới
-function addOneDriveStyles() {
-  const style = document.createElement('style');
-  style.textContent = `
-    .file-item {
-      padding: 10px;
-      margin: 5px 0;
-      background-color: var(--card-bg);
-      border-radius: 5px;
-      cursor: pointer;
+    // Ẩn trạng thái
+    function hideStatus() {
+      const statusBox = document.getElementById('status-box');
+      if (statusBox) {
+        statusBox.style.display = 'none';
+      }
     }
-    
-    .file-item:hover {
-      background-color: rgba(104, 213, 155, 0.1);
-    }
-    
-    #status-box {
-      transition: all 0.3s ease;
-    }
-  `;
-  document.head.appendChild(style);
-}
 
-// Khởi tạo OneDrive integration
-function initOneDriveIntegration() {
-  addOneDriveStyles();
-  
-  // Thêm nút vào controls
-  const controls = document.createElement('div');
-  controls.className = 'controls';
-  
-  if (!document.querySelector('#mainView .controls')) {
-    document.getElementById('mainView').insertBefore(controls, document.getElementById('mainView').firstChild);
-  }
-  
-  // Khởi tạo MSAL sau khi DOM đã tải
-  setTimeout(initMSAL, 500);
-}
-
-// Gọi hàm này trong initApp() để khởi tạo OneDrive
-function initApp() {
-  try {
-    // Tải chủ đề
-    const savedTheme = localStorage.getItem('knowledgeTreeTheme');
-    if (savedTheme === 'dark') {
-      document.body.classList.add('dark-theme');
-      currentTheme = 'dark';
+    // Xuất dữ liệu ra file
+    function exportData() {
+      try {
+        // Chuẩn bị dữ liệu với metadata
+        const metaData = {
+          data: data,
+          version: dataVersion,
+          lastModified: Date.now(),
+          source: 'local'
+        };
+        
+        // Chuyển đổi thành chuỗi JSON
+        const jsonData = JSON.stringify(metaData, null, 2);
+        
+        // Tạo Blob cho file
+        const blob = new Blob([jsonData], {type: 'application/json'});
+        
+        // Tạo URL tạm thời
+        const url = URL.createObjectURL(blob);
+        
+        // Tạo phần tử <a> để tải xuống
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'cay-kien-thuc-' + new Date().toISOString().slice(0, 10) + '.json';
+        
+        // Thêm vào body, click, và xóa
+        document.body.appendChild(a);
+        a.click();
+        
+        // Dọn dẹp
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
+        
+        showStatus('Đã xuất dữ liệu thành công!');
+        setTimeout(() => hideStatus(), 2000);
+        
+      } catch (error) {
+        console.error('Lỗi khi xuất dữ liệu:', error);
+        alert('Không thể xuất dữ liệu: ' + error.message);
+      }
     }
-    
-    // Tải dữ liệu
-    loadData();
-    renderMain();
-    
-    // Khởi tạo OneDrive
-    initOneDriveIntegration();
-    
-  } catch (error) {
-    console.error('Lỗi khởi tạo ứng dụng:', error);
-    alert('Đã xảy ra lỗi khi khởi tạo ứng dụng. Dữ liệu sẽ được thiết lập lại.');
-    resetToDefaultData();
-    renderMain();
-    initOneDriveIntegration();  // Vẫn khởi tạo OneDrive
-  }
-}
+
+    // Nhập dữ liệu từ file
+    function importData() {
+      try {
+        // Tạo phần tử input file
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        
+        // Xử lý sự kiện khi chọn file
+        input.onchange = function(e) {
+          const file = e.target.files[0];
+          if (!file) return;
+          
+          showStatus('Đang đọc file...');
+          
+          const reader = new FileReader();
+          reader.onload = function(event) {
+            try {
+              const importedData = JSON.parse(event.target.result);
+              
+              // Kiểm tra định dạng dữ liệu
+              if (importedData.data) {
+                const confirmMessage = 'Dữ liệu hiện tại sẽ bị thay thế. Bạn có muốn tiếp tục?';
+                if (confirm(confirmMessage)) {
+                  // Cập nhật dữ liệu
+                  data = importedData.data;
+                  dataVersion = importedData.version || 1;
+                  lastSyncTime = importedData.lastModified || Date.now();
+                  lastSyncSource = 'local';
+                  
+                  // Lưu vào localStorage
+                  saveData();
+                  
+                  // Cập nhật giao diện
+                  goHome();
+                  showStatus('Đã nhập dữ liệu thành công!');
+                  setTimeout(() => hideStatus(), 2000);
+                } else {
+                  hideStatus();
+                }
+              } else {
+                alert('File không đúng định dạng cây kiến thức.');
+                hideStatus();
+              }
+            } catch (error) {
+              console.error('Lỗi khi đọc file:', error);
+              alert('Không thể đọc file. Đảm bảo bạn chọn đúng file JSON cây kiến thức.');
+              hideStatus();
+            }
+          };
+          
+          reader.onerror = function() {
+            alert('Không thể đọc file.');
+            hideStatus();
+          };
+          
+          reader.readAsText(file);
+        };
+        
+        // Click để mở hộp thoại chọn file
+        input.click();
+        
+      } catch (error) {
+        console.error('Lỗi khi nhập dữ liệu:', error);
+        alert('Không thể nhập dữ liệu: ' + error.message);
+      }
+    }
 
     // Bắt đầu ứng dụng khi trang đã tải xong
     document.addEventListener('DOMContentLoaded', initApp);
