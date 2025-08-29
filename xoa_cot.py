@@ -15,9 +15,14 @@ def process_large_csv(input_file, output_file, chunk_size=10000):
         chunk_size (int): Kích thước mỗi chunk để xử lý
     """
     
-    # Danh sách các cột cần giữ lại
+    # Kiểm tra file đầu vào có tồn tại không
+    if not os.path.exists(input_file):
+        print(f"Lỗi: File '{input_file}' không tồn tại!")
+        return False
+    
+    # Danh sách các cột cần giữ lại (không bao gồm flood)
     required_columns = [
-        'flood', 'lulc', 'Density_River', 'Density_Road', 
+        'lulc', 'Density_River', 'Density_Road', 
         'Distan2river_met', 'Distan2road_met', 'aspect', 
         'curvature', 'dem', 'flowDir', 'slope', 'twi', 'NDVI'
     ]
@@ -37,15 +42,6 @@ def process_large_csv(input_file, output_file, chunk_size=10000):
             coord_columns.append(col)
     
     print(f"Các cột tọa độ tìm thấy: {coord_columns}")
-    
-    # Tìm các cột lịch sử lũ
-    flood_columns = []
-    for col in all_columns:
-        col_lower = col.lower()
-        if 'flood' in col_lower and col != 'flood':
-            flood_columns.append(col)
-    
-    print(f"Các cột lịch sử lũ tìm thấy ({len(flood_columns)} cột): {flood_columns[:10]}...")
     
     # Tìm cột NDVI 2024
     ndvi_2024_column = None
@@ -71,11 +67,9 @@ def process_large_csv(input_file, output_file, chunk_size=10000):
     # Thêm cột tọa độ
     columns_to_read.extend(coord_columns)
     
-    # Thêm các cột cơ bản (trừ flood và NDVI)
+    # Thêm các cột cần thiết
     for col in required_columns:
-        if col == 'flood':
-            continue  # Sẽ tạo lại từ các cột lịch sử lũ
-        elif col == 'NDVI':
+        if col == 'NDVI':
             if ndvi_2024_column and ndvi_2024_column in all_columns:
                 columns_to_read.append(ndvi_2024_column)
         else:
@@ -84,8 +78,8 @@ def process_large_csv(input_file, output_file, chunk_size=10000):
             else:
                 print(f"Cảnh báo: Không tìm thấy cột '{col}'")
     
-    # Thêm các cột lịch sử lũ
-    columns_to_read.extend(flood_columns)
+    # Loại bỏ cột trùng lặp
+    columns_to_read = list(dict.fromkeys(columns_to_read))
     
     print(f"Tổng số cột sẽ được xử lý: {len(columns_to_read)}")
     
@@ -110,8 +104,8 @@ def process_large_csv(input_file, output_file, chunk_size=10000):
         )
         
         for i, chunk in enumerate(tqdm(chunk_reader, total=total_chunks, desc="Xử lý chunks")):
-            # Xử lý chunk
-            processed_chunk = process_chunk(chunk, flood_columns, ndvi_2024_column, coord_columns)
+            # Xử lý chunk (không cần flood_columns nữa)
+            processed_chunk = process_chunk(chunk, [], ndvi_2024_column, coord_columns)
             
             # Ghi chunk đã xử lý
             if first_chunk:
@@ -149,7 +143,7 @@ def process_chunk(chunk, flood_columns, ndvi_2024_column, coord_columns):
     
     Args:
         chunk (DataFrame): Chunk dữ liệu cần xử lý
-        flood_columns (list): Danh sách các cột lịch sử lũ
+        flood_columns (list): Danh sách các cột lịch sử lũ (không sử dụng)
         ndvi_2024_column (str): Tên cột NDVI 2024
         coord_columns (list): Danh sách các cột tọa độ
     
@@ -157,32 +151,13 @@ def process_chunk(chunk, flood_columns, ndvi_2024_column, coord_columns):
         DataFrame: Chunk đã được xử lý
     """
     
-    # Tạo cột flood tổng hợp từ các cột lịch sử lũ
-    if flood_columns:
-        # Chuyển đổi tất cả các cột lũ thành numeric, thay thế lỗi bằng 0
-        for col in flood_columns:
-            if col in chunk.columns:
-                chunk[col] = pd.to_numeric(chunk[col], errors='coerce').fillna(0)
-        
-        # Tạo cột flood: 1 nếu có ít nhất một cột lũ = 1, ngược lại = 0
-        available_flood_cols = [col for col in flood_columns if col in chunk.columns]
-        if available_flood_cols:
-            chunk['flood'] = (chunk[available_flood_cols].sum(axis=1) > 0).astype(int)
-        else:
-            chunk['flood'] = 0
-        
-        # Xóa các cột lịch sử lũ gốc
-        chunk = chunk.drop(columns=available_flood_cols, errors='ignore')
-    else:
-        chunk['flood'] = 0
-    
     # Đổi tên cột NDVI 2024 thành NDVI
     if ndvi_2024_column and ndvi_2024_column in chunk.columns:
         chunk = chunk.rename(columns={ndvi_2024_column: 'NDVI'})
     
-    # Sắp xếp lại thứ tự cột
+    # Sắp xếp lại thứ tự cột: lat, lon, lulc, rồi các feature khác
     final_columns = coord_columns + [
-        'flood', 'lulc', 'Density_River', 'Density_Road', 
+        'lulc', 'Density_River', 'Density_Road', 
         'Distan2river_met', 'Distan2road_met', 'aspect', 
         'curvature', 'dem', 'flowDir', 'slope', 'twi', 'NDVI'
     ]
