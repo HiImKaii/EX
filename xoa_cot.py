@@ -4,16 +4,28 @@ import re
 from tqdm import tqdm
 import gc
 import os
+from multiprocessing import Pool, cpu_count
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import time
+import psutil
 
-def process_large_csv(input_file, output_file, chunk_size=10000):
+def process_large_csv(input_file, output_file, chunk_size=100000, n_workers=None):
     """
-    Xử lý file CSV lớn theo chunks
+    Xử lý file CSV lớn theo chunks với multiprocessing
     
     Args:
         input_file (str): Đường dẫn file CSV đầu vào
         output_file (str): Đường dẫn file CSV đầu ra
-        chunk_size (int): Kích thước mỗi chunk để xử lý
+        chunk_size (int): Kích thước mỗi chunk để xử lý (tăng lên cho máy mạnh)
+        n_workers (int): Số worker processes (None = auto detect)
     """
+    
+    # Tự động phát hiện số worker tối ưu
+    if n_workers is None:
+        n_workers = min(24, cpu_count())  # Tối đa 24 cores như máy bạn
+    
+    print(f"🚀 Sử dụng {n_workers} workers với chunk size {chunk_size:,}")
+    print(f"💾 RAM khả dụng: {psutil.virtual_memory().available / (1024**3):.1f}GB")
     
     # Kiểm tra file đầu vào có tồn tại không
     if not os.path.exists(input_file):
@@ -103,26 +115,49 @@ def process_large_csv(input_file, output_file, chunk_size=10000):
             low_memory=False
         )
         
-        for i, chunk in enumerate(tqdm(chunk_reader, total=total_chunks, desc="Xử lý chunks")):
-            # Xử lý chunk (không cần flood_columns nữa)
-            processed_chunk = process_chunk(chunk, [], ndvi_2024_column, coord_columns)
-            
-            # Ghi chunk đã xử lý
-            if first_chunk:
-                processed_chunk.to_csv(output_file, index=False, mode='w')
-                first_chunk = False
-            else:
-                processed_chunk.to_csv(output_file, index=False, mode='a', header=False)
-            
-            total_rows_processed += len(processed_chunk)
-            
-            # Dọn dẹp bộ nhớ
-            del chunk, processed_chunk
-            gc.collect()
-            
-            # In thông tin tiến độ
-            if (i + 1) % 10 == 0:
-                print(f"Đã xử lý {total_rows_processed:,} dòng")
+        # Thu thập các chunk để xử lý batch
+        print("🔄 Bắt đầu xử lý song song...")
+        start_time = time.time()
+        
+        # Xử lý theo batch để tận dụng RAM
+        batch_size = max(1, min(n_workers * 2, 32))  # Batch size tối ưu
+        chunk_batch = []
+        processed_rows = 0
+        
+        with ProcessPoolExecutor(max_workers=n_workers) as executor:
+            for i, chunk in enumerate(tqdm(chunk_reader, total=total_chunks, desc="Đọc chunks")):
+                # Chuẩn bị dữ liệu cho multiprocessing
+                chunk_args = (chunk, ndvi_2024_column, coord_columns)
+                chunk_batch.append(chunk_args)
+                
+                # Xử lý batch khi đầy hoặc kết thúc
+                if len(chunk_batch) >= batch_size or i == total_chunks - 1:
+                    # Submit batch để xử lý song song
+                    futures = [executor.submit(process_chunk_parallel, args) for args in chunk_batch]
+                    
+                    # Thu thập kết quả và ghi file
+                    for j, future in enumerate(as_completed(futures)):
+                        processed_chunk = future.result()
+                        
+                        if not processed_chunk.empty:
+                            # Ghi chunk đã xử lý
+                            if processed_rows == 0:
+                                processed_chunk.to_csv(output_file, index=False, mode='w')
+                            else:
+                                processed_chunk.to_csv(output_file, index=False, mode='a', header=False)
+                            
+                            processed_rows += len(processed_chunk)
+                    
+                    # Dọn dẹp batch
+                    chunk_batch = []
+                    gc.collect()
+                    
+                    # Hiển thị tiến độ
+                    elapsed = time.time() - start_time
+                    speed = processed_rows / elapsed if elapsed > 0 else 0
+                    print(f"⚡ Đã xử lý {processed_rows:,} dòng - Tốc độ: {speed:,.0f} dòng/giây")
+        
+        total_rows_processed = processed_rows
     
     except Exception as e:
         print(f"Lỗi khi xử lý file: {str(e)}")
@@ -136,6 +171,13 @@ def process_large_csv(input_file, output_file, chunk_size=10000):
     print(f"Kích thước file kết quả: {result_size:.2f} GB")
     
     return True
+
+def process_chunk_parallel(args):
+    """
+    Wrapper function để xử lý chunk trong multiprocessing
+    """
+    chunk_data, ndvi_2024_column, coord_columns = args
+    return process_chunk(chunk_data, [], ndvi_2024_column, coord_columns)
 
 def process_chunk(chunk, flood_columns, ndvi_2024_column, coord_columns):
     """
@@ -217,9 +259,14 @@ if __name__ == "__main__":
     # Thay đổi đường dẫn file của bạn
     INPUT_FILE = "your_large_file.csv"  # Thay bằng đường dẫn file 73GB của bạn
     OUTPUT_FILE = "processed_flood_data.csv"  # File kết quả
-    CHUNK_SIZE = 10000  # Số dòng xử lý mỗi lần (có thể điều chỉnh tùy RAM)
     
-    print("=== BẮT ĐẦU XỬ LÝ FILE CSV 73GB ===")
+    # Tối ưu cho máy mạnh: 24 cores, 29GB RAM trống
+    CHUNK_SIZE = 500000  # Tăng lên 500k dòng mỗi chunk (từ 10k)
+    N_WORKERS = 20  # Sử dụng 20/24 cores, để lại 4 cores cho hệ thống
+    
+    print("🚀 === XỬ LÝ FILE CSV 73GB VỚI MULTIPROCESSING ===")
+    print(f"💻 Cấu hình: {N_WORKERS} workers, chunk size {CHUNK_SIZE:,}")
+    print(f"💾 RAM khả dụng: {psutil.virtual_memory().available / (1024**3):.1f}GB")
     
     # Phân tích cấu trúc file trước (tùy chọn)
     try:
@@ -227,10 +274,17 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Không thể phân tích cấu trúc: {e}")
     
-    print("\n" + "="*50)
+    print("\n" + "="*60)
     
-    # Xử lý file chính
-    success = process_large_csv(INPUT_FILE, OUTPUT_FILE, CHUNK_SIZE)
+    # Xử lý file chính với multiprocessing
+    start_total = time.time()
+    success = process_large_csv(INPUT_FILE, OUTPUT_FILE, CHUNK_SIZE, N_WORKERS)
+    end_total = time.time()
+    
+    if success:
+        print(f"✅ Xử lý hoàn thành thành công trong {end_total - start_total:.1f} giây!")
+        
+        # Kiểm tra kết quả
     
     if success:
         print("✅ Xử lý hoàn thành thành công!")
