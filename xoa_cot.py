@@ -8,23 +8,25 @@ from multiprocessing import Pool, cpu_count
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
 import psutil
+import warnings
+warnings.filterwarnings('ignore')
 
-def process_large_csv(input_file, output_file, chunk_size=100000, n_workers=None):
+def process_large_csv(input_file, output_file, chunk_size=1000000, n_workers=None):
     """
-    Xử lý file CSV lớn theo chunks với multiprocessing
+    Xử lý file CSV lớn theo chunks với multiprocessing - Tối ưu tốc độ cao
     
     Args:
         input_file (str): Đường dẫn file CSV đầu vào
         output_file (str): Đường dẫn file CSV đầu ra
-        chunk_size (int): Kích thước mỗi chunk để xử lý (tăng lên cho máy mạnh)
+        chunk_size (int): Kích thước mỗi chunk (mặc định 500K cho máy mạnh)
         n_workers (int): Số worker processes (None = auto detect)
     """
     
     # Tự động phát hiện số worker tối ưu
     if n_workers is None:
-        n_workers = min(24, cpu_count())  # Tối đa 24 cores như máy bạn
+        n_workers = min(20, cpu_count() - 4)  # Để lại 4 cores cho hệ thống
     
-    print(f"🚀 Sử dụng {n_workers} workers với chunk size {chunk_size:,}")
+    print(f"🚀 Tối ưu tốc độ: {n_workers} workers × chunk {chunk_size:,}")
     print(f"💾 RAM khả dụng: {psutil.virtual_memory().available / (1024**3):.1f}GB")
     
     # Kiểm tra file đầu vào có tồn tại không
@@ -112,20 +114,22 @@ def process_large_csv(input_file, output_file, chunk_size=100000, n_workers=None
             input_file, 
             chunksize=chunk_size,
             usecols=columns_to_read,
-            low_memory=False
+            low_memory=False,
+            engine='c',  # Sử dụng C engine để tăng tốc
+            buffer_lines=50000  # Buffer lớn cho I/O nhanh hơn
         )
         
         # Thu thập các chunk để xử lý batch
         print("🔄 Bắt đầu xử lý song song...")
         start_time = time.time()
         
-        # Xử lý theo batch để tận dụng RAM
-        batch_size = max(1, min(n_workers * 2, 32))  # Batch size tối ưu
+        # Xử lý theo batch lớn để tận dụng CPU
+        batch_size = n_workers * 3  # Tăng batch size để giảm overhead
         chunk_batch = []
         processed_rows = 0
         
         with ProcessPoolExecutor(max_workers=n_workers) as executor:
-            for i, chunk in enumerate(tqdm(chunk_reader, total=total_chunks, desc="Đọc chunks")):
+            for i, chunk in enumerate(tqdm(chunk_reader, total=total_chunks, desc="🔄 Xử lý")):
                 # Chuẩn bị dữ liệu cho multiprocessing
                 chunk_args = (chunk, ndvi_2024_column, coord_columns)
                 chunk_batch.append(chunk_args)
@@ -136,26 +140,34 @@ def process_large_csv(input_file, output_file, chunk_size=100000, n_workers=None
                     futures = [executor.submit(process_chunk_parallel, args) for args in chunk_batch]
                     
                     # Thu thập kết quả và ghi file
-                    for j, future in enumerate(as_completed(futures)):
+                    batch_results = []
+                    for future in as_completed(futures):
                         processed_chunk = future.result()
-                        
                         if not processed_chunk.empty:
-                            # Ghi chunk đã xử lý
-                            if processed_rows == 0:
-                                processed_chunk.to_csv(output_file, index=False, mode='w')
-                            else:
-                                processed_chunk.to_csv(output_file, index=False, mode='a', header=False)
-                            
-                            processed_rows += len(processed_chunk)
+                            batch_results.append(processed_chunk)
+                    
+                    # Ghi tất cả kết quả của batch cùng lúc
+                    if batch_results:
+                        combined_batch = pd.concat(batch_results, ignore_index=True)
+                        
+                        if processed_rows == 0:
+                            combined_batch.to_csv(output_file, index=False, mode='w')
+                        else:
+                            combined_batch.to_csv(output_file, index=False, mode='a', header=False)
+                        
+                        processed_rows += len(combined_batch)
                     
                     # Dọn dẹp batch
                     chunk_batch = []
+                    del batch_results
                     gc.collect()
                     
-                    # Hiển thị tiến độ
-                    elapsed = time.time() - start_time
-                    speed = processed_rows / elapsed if elapsed > 0 else 0
-                    print(f"⚡ Đã xử lý {processed_rows:,} dòng - Tốc độ: {speed:,.0f} dòng/giây")
+                    # Hiển thị tiến độ mỗi 10 batch để giảm overhead
+                    if i % (batch_size * 10) == 0:
+                        elapsed = time.time() - start_time
+                        speed = processed_rows / elapsed if elapsed > 0 else 0
+                        eta_seconds = (total_chunks - i - 1) * chunk_size / speed if speed > 0 else 0
+                        print(f"⚡ {processed_rows:,} dòng | {speed:,.0f} dòng/s | ETA: {eta_seconds/60:.1f}m")
         
         total_rows_processed = processed_rows
     
@@ -181,7 +193,7 @@ def process_chunk_parallel(args):
 
 def process_chunk(chunk, flood_columns, ndvi_2024_column, coord_columns):
     """
-    Xử lý một chunk dữ liệu
+    Xử lý một chunk dữ liệu - Tối ưu tốc độ cao
     
     Args:
         chunk (DataFrame): Chunk dữ liệu cần xử lý
@@ -193,22 +205,22 @@ def process_chunk(chunk, flood_columns, ndvi_2024_column, coord_columns):
         DataFrame: Chunk đã được xử lý
     """
     
-    # Đổi tên cột NDVI 2024 thành NDVI
+    # Đổi tên cột NDVI 2024 thành NDVI nhanh chóng
     if ndvi_2024_column and ndvi_2024_column in chunk.columns:
-        chunk = chunk.rename(columns={ndvi_2024_column: 'NDVI'})
+        chunk.rename(columns={ndvi_2024_column: 'NDVI'}, inplace=True)
     
-    # Sắp xếp lại thứ tự cột: lat, lon, lulc, rồi các feature khác
-    final_columns = coord_columns + [
+    # Định nghĩa cột mục tiêu một lần
+    target_columns = coord_columns + [
         'lulc', 'Density_River', 'Density_Road', 
         'Distan2river_met', 'Distan2road_met', 'aspect', 
         'curvature', 'dem', 'flowDir', 'slope', 'twi', 'NDVI'
     ]
     
-    # Chỉ giữ các cột có trong chunk
-    available_columns = [col for col in final_columns if col in chunk.columns]
-    chunk = chunk[available_columns]
+    # Lọc cột nhanh với intersection
+    available_columns = [col for col in target_columns if col in chunk.columns]
     
-    return chunk
+    # Trả về chunk đã lọc
+    return chunk[available_columns].copy()
 
 def analyze_csv_structure(input_file, num_rows=1000):
     """
@@ -254,6 +266,42 @@ def analyze_csv_structure(input_file, num_rows=1000):
     
     return sample_df
 
+def show_sample_output(output_file, num_rows=10):
+    """
+    Hiển thị dữ liệu mẫu từ file kết quả
+    """
+    print(f"\n📋 === {num_rows} DÒNG ĐẦU CỦA FILE {output_file} ===")
+    
+    try:
+        # Đọc file kết quả
+        sample = pd.read_csv(output_file, nrows=num_rows)
+        
+        print(f"📊 Kích thước file: {sample.shape[0]} dòng (mẫu) × {sample.shape[1]} cột")
+        print(f"📋 Các cột: {list(sample.columns)}")
+        
+        # Set display options for better formatting
+        pd.set_option('display.max_columns', None)
+        pd.set_option('display.width', None)
+        pd.set_option('display.float_format', '{:.6f}'.format)
+        
+        print(f"\n📊 DỮ LIỆU {num_rows} DÒNG ĐẦU:")
+        print(sample.to_string(index=True))
+        
+        # Thống kê cơ bản
+        print(f"\n📈 THỐNG KÊ CƠ BẢN:")
+        numeric_cols = sample.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            for col in numeric_cols[:3]:  # Hiển thị 3 cột số đầu
+                col_stats = sample[col].describe()
+                print(f"  {col}: Min={col_stats['min']:.3f}, Max={col_stats['max']:.3f}, Mean={col_stats['mean']:.3f}")
+        
+        # Kiểm tra file size
+        file_size = os.path.getsize(output_file) / (1024**3)  # GB
+        print(f"\n💾 Kích thước file: {file_size:.2f} GB")
+        
+    except Exception as e:
+        print(f"❌ Lỗi đọc file: {e}")
+
 # Cách sử dụng
 if __name__ == "__main__":
     # Thay đổi đường dẫn file của bạn
@@ -261,7 +309,7 @@ if __name__ == "__main__":
     OUTPUT_FILE = "processed_flood_data.csv"  # File kết quả
     
     # Tối ưu cho máy mạnh: 24 cores, 29GB RAM trống
-    CHUNK_SIZE = 500000  # Tăng lên 500k dòng mỗi chunk (từ 10k)
+    CHUNK_SIZE = 1000000  # Tăng lên 1M dòng/chunk để giảm overhead (từ 500K)
     N_WORKERS = 20  # Sử dụng 20/24 cores, để lại 4 cores cho hệ thống
     
     print("🚀 === XỬ LÝ FILE CSV 73GB VỚI MULTIPROCESSING ===")
@@ -284,15 +332,10 @@ if __name__ == "__main__":
     if success:
         print(f"✅ Xử lý hoàn thành thành công trong {end_total - start_total:.1f} giây!")
         
-        # Kiểm tra kết quả
-    
-    if success:
-        print("✅ Xử lý hoàn thành thành công!")
+        # Hiển thị 10 dòng đầu của file kết quả
+        show_sample_output(OUTPUT_FILE, num_rows=10)
         
-        # Kiểm tra kết quả
-        result_sample = pd.read_csv(OUTPUT_FILE, nrows=5)
-        print(f"\nMẫu dữ liệu kết quả:")
-        print(result_sample)
-        print(f"Các cột trong file kết quả: {list(result_sample.columns)}")
+        print(f"\n🎯 File kết quả đã được lưu: {OUTPUT_FILE}")
+        print("👋 Chương trình hoàn thành!")
     else:
         print("❌ Có lỗi xảy ra trong quá trình xử lý!")
