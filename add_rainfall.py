@@ -82,7 +82,7 @@ def extract_rainfall_parallel(input_csv, rainfall_tiff, output_csv, chunk_size=1
     batch_size = n_workers * 2
     chunk_batch = []
     
-    chunk_reader = pd.read_csv(input_csv, chunksize=chunk_size, low_memory=False, engine='c', buffer_lines=50000)
+    chunk_reader = pd.read_csv(input_csv, chunksize=chunk_size, low_memory=False, engine='c')
     
     with ProcessPoolExecutor(max_workers=n_workers) as executor:
         for i, chunk in enumerate(chunk_reader):
